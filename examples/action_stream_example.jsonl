@@ -1,0 +1,4 @@
+{"schema_version":"gwt_trace_v1","run_id":"example-run","timestamp":0,"should_step":true,"action":"RIGHT","action_type":"MOVE","direction":"RIGHT","confidence":0.72,"source_module":"motor","source_timestamp":0}
+{"schema_version":"gwt_trace_v1","run_id":"example-run","timestamp":1,"should_step":true,"action":"PICKUP","action_type":"PICKUP","direction":null,"confidence":0.81,"source_module":"motor","source_timestamp":1}
+{"schema_version":"gwt_trace_v1","run_id":"example-run","timestamp":2,"should_step":false,"action":null,"action_type":"NOOP","direction":null,"confidence":0.61,"source_module":"language_report","source_timestamp":2}
+

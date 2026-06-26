@@ -1,8 +1,13 @@
 # Multi-Agent Global Workspace Scaffold
 
-This folder contains the non-2D-environment side of the project: a small Python
-framework for running specialized modules through a central global workspace,
-selecting a winning broadcast, resolving an action, and logging every timestamp.
+This repository contains the non-2D-environment side of the project: a small
+Python framework for running specialized modules through a central global
+workspace, selecting a winning broadcast, resolving a standardized simulator
+action, and logging every cognitive timestep.
+
+The code is designed to connect to Qiyuan's foraging simulator:
+
+<https://github.com/llll0630/Foraging-Environment-Design>
 
 The 2D character environment is intentionally behind an adapter interface. When
 the real environment code arrives, add a concrete adapter that implements:
@@ -27,6 +32,56 @@ EnvironmentAdapter
   -> TraceLogger writes JSONL
 ```
 
+## Quick Start
+
+```bash
+git clone https://github.com/yx21e/AAAI-global-workspace-foraging.git
+cd AAAI-global-workspace-foraging
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e .
+python scripts/run_mock.py
+python scripts/export_mock_actions.py
+python -m unittest discover -s tests -v
+```
+
+The core scaffold has no third-party runtime dependencies.
+
+To run against Qiyuan's actual simulator, install the simulator-side dependency:
+
+```bash
+python -m pip install -r requirements-foraging.txt
+```
+
+## Qiyuan Handoff
+
+For simulator integration, Qiyuan can start from:
+
+- `unified_trace_action_schema.md`: full trace schema and replay contract.
+- `examples/action_stream_example.jsonl`: minimal action stream example.
+- `src/gwt_agent/envs/foraging_adapter.py`: adapter for the current
+  `ForagingEnv` state fields.
+
+The action stream fields the simulator needs are:
+
+```json
+{
+  "timestamp": 0,
+  "should_step": true,
+  "action": "RIGHT",
+  "action_type": "MOVE"
+}
+```
+
+Replay rule:
+
+```python
+if record["should_step"]:
+    state = env.step(record["action"])
+else:
+    state = current_state
+```
+
 ## Key Files
 
 - `src/gwt_agent/core/types.py`: shared data structures.
@@ -47,8 +102,7 @@ EnvironmentAdapter
 ## Run the Mock Demo
 
 ```bash
-cd /home/yx21e.fsu/AAAI_project/begining_stage
-PYTHONPATH=src python3 scripts/run_mock.py
+python scripts/run_mock.py
 ```
 
 The demo writes:
@@ -75,7 +129,7 @@ To export the full standardized trace plus the minimal Qiyuan-readable action
 stream:
 
 ```bash
-PYTHONPATH=src python3 scripts/export_mock_actions.py
+python scripts/export_mock_actions.py
 ```
 
 This writes:
@@ -97,10 +151,12 @@ EnvironmentState(
         "agent_position": ...,
         "base_position": ...,
         "resource_position": ...,
-        "hazard_positions": ...,
+        "wall_positions": ...,
         "carrying_resource": ...,
+        "action_success": ...,
+        "resources_collected": ...,
     },
-    available_actions=["UP", "DOWN", "LEFT", "RIGHT", "NOOP"],
+    available_actions=["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"],
     reward=float,
     done=bool,
     info={...},
@@ -178,3 +234,14 @@ if record["should_step"]:
 else:
     state = current_state
 ```
+
+## Dependency Notes
+
+- Core package: Python standard library only.
+- Test runner: Python standard library `unittest`.
+- Qiyuan simulator integration: requires `pygame`, declared in
+  `requirements-foraging.txt` and the optional package extra `.[foraging]`.
+
+## License
+
+MIT. See `LICENSE`.

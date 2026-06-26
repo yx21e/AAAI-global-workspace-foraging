@@ -1,0 +1,3 @@
+# Core scaffold has no third-party runtime dependencies.
+# Qiyuan's ForagingEnv requires pygame if you run the real simulator adapter.
+
