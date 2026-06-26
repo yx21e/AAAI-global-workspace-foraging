@@ -1,0 +1,9 @@
+{
+  "disabled_modules": [],
+  "score_modifiers": {},
+  "forced_action": null,
+  "no_op_action": "NOOP",
+  "metadata": {
+    "description": "Default baseline run with all reference modules enabled."
+  }
+}
