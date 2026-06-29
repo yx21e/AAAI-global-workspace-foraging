@@ -185,7 +185,7 @@ to keep them explicit enough that modules and trace analysis can read them.
 ## First-Version Module Set
 
 Grounded in Qiyuan's current environment fields, the recommended first-version
-modules are:
+experimental modules are:
 
 ```python
 [
@@ -194,6 +194,11 @@ modules are:
     OutcomeMonitorModule(),   # action_success / progress feedback
 ]
 ```
+
+For a pure navigation/control baseline, `PerceptionModule` + `MotorModule` is
+enough. `OutcomeMonitorModule` is kept in the experimental default because it
+makes feedback/progress available to workspace competition and later
+agency/dissociation-style analyses.
 
 `LanguageReportModule` is optional diagnostic/reportability infrastructure. It
 reads our internal workspace broadcast; Qiyuan's current environment does not

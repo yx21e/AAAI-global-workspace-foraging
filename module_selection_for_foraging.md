@@ -61,7 +61,7 @@ derives `wall_positions` and optional local view from `env.grid`.
 |---|---:|---|
 | `PerceptionModule` | Yes | Yes | It should parse spatial state: agent/resource/base coordinates, wall grid, optional local view. It is not a true image vision module yet unless screenshots are explicitly used. |
 | `MotorModule` | Yes | Yes | It is the only module that produces simulator actions: `UP/DOWN/LEFT/RIGHT/PICKUP`. Qiyuan's env needs this output. |
-| `OutcomeMonitorModule` | Yes | Yes | Uses `action_success`, `carrying`, `resources_collected`, `step_count`. Needed for feedback, self-monitoring, replay, and later agency tests. |
+| `OutcomeMonitorModule` | Yes for experiments; optional for pure control | Yes | Uses `action_success`, `carrying`, `resources_collected`, `step_count`. Not strictly needed for shortest-path navigation, but needed if feedback/progress should compete for workspace access and for later agency or dissociation-style experiments. |
 | `LanguageReportModule` | Optional / diagnostic only | No | Qiyuan's env does not provide language/report/query fields. This module only reads our internal workspace broadcast and can be used later for reportability, blindsight-like behavior, confabulation, or explanation traces. |
 | `EmotionModule` | No | No | Not supported by the current environment fields and not necessary for first-wave GWT pipeline. If needed later, implement as `Value/SalienceEvaluation`, not "emotion". |
 | `MemoryModule` | Later | Partly | Useful for map memory or history when local view is limited, but less necessary if full coordinates/grid are available. |
@@ -69,13 +69,22 @@ derives `wall_positions` and optional local view from `env.grid`.
 
 ## 4. First-Version Module Set
 
-Recommended first-version env-grounded module list:
+Recommended first-version env-grounded experimental module list:
 
 ```python
 [
     PerceptionModule(),       # spatial/symbolic perception
     MotorModule(),            # action proposal
     OutcomeMonitorModule(),   # feedback/self-monitoring
+]
+```
+
+Minimal control-only baseline:
+
+```python
+[
+    PerceptionModule(),
+    MotorModule(),
 ]
 ```
 
@@ -131,7 +140,8 @@ The full state is logged in `TraceEnvelope`, but modules only consume their own
 
 The module choice should be driven by what the foraging environment actually
 exposes. With the current Qiyuan code, the defensible env-grounded first set is
-spatial perception, motor/action, and outcome monitoring. `LanguageReportModule`
-is optional internal diagnostics/reportability infrastructure, not a module
-backed by current simulator fields. A literal emotion module is not justified at
-this stage.
+spatial perception, motor/action, and outcome monitoring for the experimental
+pipeline. For a pure navigation/control baseline, perception + motor is enough.
+`LanguageReportModule` is optional internal diagnostics/reportability
+infrastructure, not a module backed by current simulator fields. A literal
+emotion module is not justified at this stage.
