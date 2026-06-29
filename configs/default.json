@@ -4,6 +4,6 @@
   "forced_action": null,
   "no_op_action": "NOOP",
   "metadata": {
-    "description": "Default baseline run with all reference modules enabled."
+    "description": "Default baseline run with env-grounded modules: perception, motor, and outcome monitor."
   }
 }

@@ -10,7 +10,6 @@ from gwt_agent.core.experiment import ExperimentConfig
 from gwt_agent.core.logger import TraceLogger
 from gwt_agent.core.runner import WorkspaceRunner
 from gwt_agent.envs.mock_env import MockGridAdapter
-from gwt_agent.modules.language import LanguageReportModule
 from gwt_agent.modules.motor import MotorModule
 from gwt_agent.modules.outcome import OutcomeMonitorModule
 from gwt_agent.modules.perception import PerceptionModule
@@ -21,7 +20,6 @@ def make_modules():
         PerceptionModule(),
         MotorModule(),
         OutcomeMonitorModule(),
-        LanguageReportModule(),
     ]
 
 
@@ -40,7 +38,7 @@ class WorkspaceRunnerTest(unittest.TestCase):
             self.assertEqual(len(traces), 3)
             self.assertIn(
                 traces[0].broadcast.winner_module,
-                {"perception", "motor", "outcome_monitor", "language_report"},
+                {"perception", "motor", "outcome_monitor"},
             )
             self.assertIn(
                 traces[0].env_action.command,

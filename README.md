@@ -93,7 +93,7 @@ else:
 - `src/gwt_agent/core/logger.py`: timestamp-level JSONL logger.
 - `src/gwt_agent/core/export.py`: full trace and simulator action export helpers.
 - `src/gwt_agent/core/experiment.py`: ablation/intervention config.
-- `src/gwt_agent/modules/`: reference perception, motor, outcome-monitor, and language/report modules.
+- `src/gwt_agent/modules/`: env-grounded perception, motor, outcome-monitor modules plus optional language/report diagnostics.
 - `src/gwt_agent/envs/mock_env.py`: minimal mock grid only for interface testing.
 - `src/gwt_agent/envs/foraging_adapter.py`: adapter for Qiyuan's foraging env.
 - `unified_trace_action_schema.md`: shared schema for full traces and action replay.
@@ -192,13 +192,14 @@ modules are:
     PerceptionModule(),       # symbolic spatial state / optional local view
     MotorModule(),            # UP/DOWN/LEFT/RIGHT/PICKUP proposal
     OutcomeMonitorModule(),   # action_success / progress feedback
-    LanguageReportModule(),   # optional report / explanation channel
 ]
 ```
 
-For a minimal control-only run, `LanguageReportModule` can be removed. We do not
-include a literal emotion module in the first version; if we later need that
-role, it should be a `Value` or `SalienceEvaluation` module.
+`LanguageReportModule` is optional diagnostic/reportability infrastructure. It
+reads our internal workspace broadcast; Qiyuan's current environment does not
+provide language/report/query fields. We do not include a literal emotion module
+in the first version; if we later need that role, it should be a `Value` or
+`SalienceEvaluation` module.
 
 ## Qiyuan Foraging Environment Action Contract
 
