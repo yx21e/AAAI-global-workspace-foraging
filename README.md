@@ -98,6 +98,7 @@ else:
 - `src/gwt_agent/envs/foraging_adapter.py`: adapter for Qiyuan's foraging env.
 - `unified_trace_action_schema.md`: shared schema for full traces and action replay.
 - `module_selection_for_foraging.md`: module choices grounded in Qiyuan's env fields.
+- `pipeline_paper_alignment.md`: what is paper-derived vs. project-specific adaptation.
 
 ## Run the Mock Demo
 

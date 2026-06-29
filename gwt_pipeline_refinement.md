@@ -122,6 +122,11 @@ Minimal innovation:
 - use structured messages instead of latent vectors;
 - log everything for dissociation/ablation experiments.
 
+This should be treated as the novelty boundary. The selection-broadcast
+architecture itself should be presented as inherited from GWT/GNW/LIDA and
+recent global-workspace agent papers. See `pipeline_paper_alignment.md` for the
+paper-derived vs. project-specific split.
+
 ### Q2. Must environment timestep and workspace timestep be synchronous?
 
 No. They should be decoupled in the design.
