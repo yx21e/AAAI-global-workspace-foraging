@@ -32,6 +32,9 @@ EnvironmentAdapter
   -> TraceLogger writes JSONL
 ```
 
+Routine, low-conflict actions can later be handled by an explicit automatic
+route, but the default scaffold logs the full workspace route.
+
 ## Quick Start
 
 ```bash
@@ -93,7 +96,7 @@ else:
 - `src/gwt_agent/core/logger.py`: timestamp-level JSONL logger.
 - `src/gwt_agent/core/export.py`: full trace and simulator action export helpers.
 - `src/gwt_agent/core/experiment.py`: ablation/intervention config.
-- `src/gwt_agent/modules/`: env-grounded perception, motor, outcome-monitor modules plus optional language/report diagnostics.
+- `src/gwt_agent/modules/`: perception, motor, language/report modules plus optional outcome-monitor diagnostics.
 - `src/gwt_agent/envs/mock_env.py`: minimal mock grid only for interface testing.
 - `src/gwt_agent/envs/foraging_adapter.py`: adapter for Qiyuan's foraging env.
 - `unified_trace_action_schema.md`: shared schema for full traces and action replay.
@@ -176,6 +179,8 @@ to keep them explicit enough that modules and trace analysis can read them.
   - persistent workspace state
   - task goal and experiment config
 - Module proposals are structured; natural language is just one possible field.
+- The perception module is conceptually multimodal: global bird's-eye map /
+  screenshot plus symbolic state, with optional local view if available.
 - The first attention policy combines salience, goal relevance, confidence, and a small recurrence bonus.
 - The first workspace policy is winner-take-all by uptake score.
 - If the winning broadcast has no `action_hint`, the resolver falls back to the
@@ -184,27 +189,24 @@ to keep them explicit enough that modules and trace analysis can read them.
 
 ## First-Version Module Set
 
-Grounded in Qiyuan's current environment fields, the recommended first-version
-experimental modules are:
+Grounded in Qiyuan's current environment fields and our need for an outward
+report channel, the recommended first-version modules are:
 
 ```python
 [
-    PerceptionModule(),       # symbolic spatial state / optional local view
+    PerceptionModule(),       # multimodal global map + symbolic state
     MotorModule(),            # UP/DOWN/LEFT/RIGHT/PICKUP proposal
-    OutcomeMonitorModule(),   # action_success / progress feedback
+    LanguageReportModule(),   # report to the experimenter, not the simulator
 ]
 ```
 
 For a pure navigation/control baseline, `PerceptionModule` + `MotorModule` is
-enough. `OutcomeMonitorModule` is kept in the experimental default because it
-makes feedback/progress available to workspace competition and later
-agency/dissociation-style analyses.
-
-`LanguageReportModule` is optional diagnostic/reportability infrastructure. It
-reads our internal workspace broadcast; Qiyuan's current environment does not
-provide language/report/query fields. We do not include a literal emotion module
-in the first version; if we later need that role, it should be a `Value` or
-`SalienceEvaluation` module.
+enough. `LanguageReportModule` reads our internal workspace broadcast and acts
+as the system's spokesperson to the experimenter; Qiyuan's current environment
+does not provide language/report/query fields. `OutcomeMonitorModule` is
+optional for explicit feedback/agency/intervention experiments. We do not
+include a literal emotion module in the first version; if we later need that
+role, it should be a `Value` or `SalienceEvaluation` module.
 
 ## Qiyuan Foraging Environment Action Contract
 

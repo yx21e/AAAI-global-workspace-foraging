@@ -14,6 +14,7 @@ Date: 2026-06-25
 | Goyal et al., 2021/2022, *Coordination Among Neural Modules Through a Shared Global Workspace* | Engineering implementation: bandwidth-limited shared workspace makes specialists compete and supports synchronization. | Competition should be over workspace bandwidth, not merely over action choice. |
 | Dossa et al., 2024, *Design and evaluation of a global workspace agent embodied in a realistic multimodal environment* | Embodied GWT agent: working memory is the workspace; previous workspace state is broadcast back into modality encoders. | Broadcast should feed back into module processing at the next cycle. |
 | Baars & Franklin / LIDA, 2009-2011 | Computational GWT cognitive cycle: understanding -> consciousness/attention -> action selection. | Our loop should separate cognitive cycle from environment step and action execution. |
+| Dehaene / GNW controlled-vs-automatic distinction | Effortful, reportable, or non-routine tasks require workspace-level coordination; routine specialized mappings can remain automatic. | We can add a narrow automatic motor route for reflex-like actions, but should not present it as the main workspace path. |
 | Nakanishi et al., 2025, *GWT and dealing with a real-time world* | Recent robotics-oriented GWT: selection-broadcast cycle for dynamic real-time adaptation; modules can operate in parallel/asynchronously. | We should support async/event-driven env input, with a synchronous wrapper only as a first implementation. |
 
 ## 2. What Is Wrong With Our Current Pipeline
@@ -66,12 +67,12 @@ External Environment
   -> EnvironmentAdapter
   -> Sensory/Input Buffers
   -> Specialized Modules process in parallel
-       perception module
-       memory module
-       evaluative/emotion module
-       attention/priority module
+       multimodal perception module
        motor/action module
        language/report module
+       optional memory module
+       optional feedback/outcome monitor
+       optional attention/priority module
        self-monitor/metacognition module
   -> Candidate Coalitions / ModuleProposals
   -> Attention + Uptake Gate
@@ -91,6 +92,19 @@ External Environment
        may output action or NOOP
   -> Standardized EnvAction
   -> EnvironmentAdapter.step(action)
+
+Optional automatic route:
+
+```text
+Specialized motor/action processor
+  -> AutomaticActionGuard
+  -> ActionResolver
+  -> EnvironmentAdapter.step(action)
+```
+
+This route is only for routine, low-conflict, locally decidable actions. It
+should not replace workspace competition when the system needs deliberation,
+conflict resolution, reporting, or experimenter-visible explanation.
 ```
 
 Key change:
@@ -165,7 +179,8 @@ We should separate two things:
 
 1. **Language/report module**
    - A normal specialized module.
-   - It receives broadcasts and produces verbal reports.
+   - It receives broadcasts and produces verbal reports to the experimenter.
+   - It is not an action channel to the 2D simulator.
    - It is useful for reportability, confabulation, and self-explanation experiments.
 
 2. **Language/serialization interface**
@@ -190,8 +205,46 @@ EnvironmentAdapter
   -> Attention/Uptake
   -> Global Workspace
   -> Broadcast
-  -> Report module and action module consume broadcast
+  -> Report module speaks to experimenter
+  -> Action module / resolver sends EnvAction to simulator
 ```
+
+### Q3.1 Should perception be local spatial view or global map?
+
+For Qiyuan's current environment, perception should be multimodal and global:
+
+- global bird's-eye map or rendered screenshot, if available through the adapter;
+- symbolic state: agent/resource/base coordinates, walls, carrying state;
+- optional local view later if Qiyuan implements `local_view_radius`.
+
+This is consistent with embodied/multimodal GWT agents, where modality-specific
+encoders feed information into a shared workspace. The first implementation can
+still use symbolic fields for reliability, but the conceptual perception module
+should not be limited to a local neighborhood view.
+
+### Q3.2 Can a motor action bypass full workspace competition?
+
+Yes, but only under a narrow "automatic route" interpretation.
+
+GWT/GNW distinguishes effortful/reportable tasks that need global workspace
+coordination from automatic specialized processing that can proceed locally. For
+our foraging environment, possible automatic-route candidates are:
+
+- agent is already on the resource cell and not carrying -> `PICKUP`;
+- agent is carrying and already at base -> no explicit simulator action is
+  needed if Qiyuan auto-delivers on arrival;
+- a reflex-like invalid-action correction after a simple failed movement.
+
+We should not phrase this as "motor wins without competing." A safer phrasing:
+
+```text
+Routine motor schemas may emit an automatic EnvAction when the action is
+locally decidable and low-conflict; otherwise candidate contents enter the
+attention/workspace route.
+```
+
+This is still future design work in our scaffold. It should be logged clearly so
+the trace distinguishes `automatic_route=true` from `workspace_selected=true`.
 
 ### Q4. Does the timestep output to simulation need standardization?
 

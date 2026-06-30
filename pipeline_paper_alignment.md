@@ -13,7 +13,7 @@ Our intended novelty should stay narrow:
 
 1. adapting an existing selection-broadcast workspace pipeline to Qiyuan's
    2D foraging environment;
-2. making the trace/action schema explicit enough for replay, ablation, and
+2. making the trace/action/report schema explicit enough for replay, ablation, and
    dissociation-style analysis;
 3. using lightweight module agents as readable specialist processors.
 
@@ -23,12 +23,13 @@ Everything else should be described as inherited from prior work.
 
 | Pipeline element | Existing-paper basis | Current implementation status | How we should describe it |
 |---|---|---|---|
-| Specialized processors/modules | Baars GWT; Dehaene GNW; LIDA | Implemented as `BaseModule` subclasses: perception, motor, outcome monitor, optional report | Standard GWT/GNW assumption, not our innovation |
+| Specialized processors/modules | Baars GWT; Dehaene GNW; LIDA | Implemented as `BaseModule` subclasses: multimodal perception, motor, language report, optional outcome monitor | Standard GWT/GNW assumption, not our innovation |
 | Limited central workspace | Baars GWT; GNW; Goyal shared workspace | Implemented as `CentralWorkspace(capacity=1)` | Standard bottleneck / workspace access mechanism |
 | Competition for access | Baars GWT; LIDA coalitions; Goyal bandwidth-limited specialist competition | Implemented as `AttentionGate` scoring plus `select_winner` | Paper-derived, but our scoring formula is a simple engineering approximation |
 | Global broadcast | Baars GWT; GNW; LIDA; Goyal; Dossa | Implemented as `WorkspaceBroadcast`, fed into next-cycle module inputs | Core paper mechanism |
 | Recurrent / working-memory workspace state | GNW recurrent ignition; Dossa embodied GWT agent; LIDA cognitive cycle | Implemented as persistent `WorkspaceState.history` / `active_content` | Paper-derived, but current memory is minimal |
 | Action selection after broadcast | LIDA cognitive cycle; GWT action selection phase | Implemented as downstream `ActionResolver` after broadcast | Paper-derived separation: workspace content is not automatically an action |
+| Automatic / direct action route | GWT/GNW distinction between controlled conscious access and automatic specialized processing | Future design option for reflex-like or overlearned simulator actions such as immediate `PICKUP` when already at the resource | Paper-consistent only if described as automatic local processing, not as a replacement for workspace competition |
 | Module-specific information access | GWT/GNW specialized processors; VanRullen & Kanai heterogeneous specialist modules | Implemented in `InputRouter`; modules do not all receive the same raw state | Paper-consistent; exact routing is environment-specific |
 | Shared representation / message format | VanRullen & Kanai global latent workspace; Goyal shared workspace | Implemented as structured Python dataclasses / JSON trace | Our engineering adaptation: structured messages instead of learned latent vectors |
 | Decoupled env time and cognitive cycle time | LIDA cognitive cycle; real-time selection-broadcast discussions | Implemented as `env_t` and `cycle_t`; runner supports multiple cycles per env step | Paper-consistent design; current runner is still semi-synchronous |
@@ -44,6 +45,8 @@ Everything else should be described as inherited from prior work.
 - "The selected content is globally broadcast back to modules."
 - "Action is resolved downstream of the broadcast, so the workspace winner need
   not be a motor command."
+- "Some routine/reflex-like actions may be handled by an automatic route, but
+  conflict, reporting, or deliberation should still use the workspace route."
 - "The first simulator implementation is semi-synchronous but records separate
   `env_t` and `cycle_t`."
 - "Our main contribution at this stage is the interface/trace scaffold for
@@ -60,6 +63,8 @@ Everything else should be described as inherited from prior work.
   environment fields.
 - Do not claim "emotion center" unless we add an evidence-backed
   value/salience module. The current first version does not need it.
+- Do not claim the automatic route is a new GWT mechanism. It is our engineering
+  realization of the standard controlled-vs-automatic distinction.
 
 ## Places Where The Current Scaffold Is Still Simplified
 
@@ -80,7 +85,9 @@ Everything else should be described as inherited from prior work.
 - Baars, Global Workspace Theory: specialized processors, limited workspace,
   competition, global broadcast.
 - Dehaene, Kerszberg & Changeux, 1998, GNW model: two computational spaces and
-  global access through long-distance workspace connectivity.
+  global access through long-distance workspace connectivity; automatic
+  specialized processors can handle routine mappings without workspace-level
+  coordination, while effortful tasks require global coordination.
 - Mashour, Roelfsema, Changeux & Dehaene, 2020: nonlinear ignition, recurrence,
   sustained globally accessible representation.
 - VanRullen & Kanai, 2021: deep-learning route with specialized modules and a
@@ -108,5 +115,6 @@ specialized modules
 ```
 
 But the implementation should be described as a minimal engineering scaffold.
-The most project-specific parts are the JSON schema, Qiyuan action contract,
-module routing from available simulator fields, and replay/ablation logging.
+The most project-specific parts are the JSON schema, Qiyuan action/report
+contract, module routing from available simulator fields, automatic-route
+heuristics, and replay/ablation logging.

@@ -8,8 +8,8 @@ from gwt_agent.core.export import trace_step_to_envelope, write_action_stream, w
 from gwt_agent.core.logger import TraceLogger
 from gwt_agent.core.runner import WorkspaceRunner
 from gwt_agent.envs.mock_env import MockGridAdapter
+from gwt_agent.modules.language import LanguageReportModule
 from gwt_agent.modules.motor import MotorModule
-from gwt_agent.modules.outcome import OutcomeMonitorModule
 from gwt_agent.modules.perception import PerceptionModule
 
 
@@ -20,7 +20,7 @@ def main() -> None:
         modules=[
             PerceptionModule(),
             MotorModule(),
-            OutcomeMonitorModule(),
+            LanguageReportModule(),
         ],
         experiment=ExperimentConfig(),
         logger=TraceLogger(),

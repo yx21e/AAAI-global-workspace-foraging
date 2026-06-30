@@ -4,6 +4,6 @@
   "forced_action": null,
   "no_op_action": "NOOP",
   "metadata": {
-    "description": "Default baseline run with env-grounded modules: perception, motor, and outcome monitor."
+    "description": "Default run with perception, motor, and language report modules. Outcome monitor is optional for feedback/intervention experiments."
   }
 }

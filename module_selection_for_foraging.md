@@ -59,23 +59,23 @@ derives `wall_positions` and optional local view from `env.grid`.
 
 | Candidate module | Keep now? | Directly supported by Qiyuan env? | Why |
 |---|---:|---|
-| `PerceptionModule` | Yes | Yes | It should parse spatial state: agent/resource/base coordinates, wall grid, optional local view. It is not a true image vision module yet unless screenshots are explicitly used. |
+| `PerceptionModule` | Yes | Yes | It should be multimodal: read the global bird's-eye map/screenshot plus symbolic state such as agent/resource/base coordinates and walls. It is not limited to a local spatial view. |
 | `MotorModule` | Yes | Yes | It is the only module that produces simulator actions: `UP/DOWN/LEFT/RIGHT/PICKUP`. Qiyuan's env needs this output. |
-| `OutcomeMonitorModule` | Yes for experiments; optional for pure control | Yes | Uses `action_success`, `carrying`, `resources_collected`, `step_count`. Not strictly needed for shortest-path navigation, but needed if feedback/progress should compete for workspace access and for later agency or dissociation-style experiments. |
-| `LanguageReportModule` | Optional / diagnostic only | No | Qiyuan's env does not provide language/report/query fields. This module only reads our internal workspace broadcast and can be used later for reportability, blindsight-like behavior, confabulation, or explanation traces. |
+| `LanguageReportModule` | Yes | No | Qiyuan's env does not provide language/report/query fields. This module reads our internal workspace broadcast and acts as the system's outward-facing spokesperson to the experimenter, not to the 2D simulator. |
+| `OutcomeMonitorModule` | Optional for feedback/intervention experiments | Yes | Uses `action_success`, `carrying`, `resources_collected`, `step_count`. Not part of the default module set; useful if we explicitly study feedback monitoring, agency, or delayed/mismatched outcome interventions. |
 | `EmotionModule` | No | No | Not supported by the current environment fields and not necessary for first-wave GWT pipeline. If needed later, implement as `Value/SalienceEvaluation`, not "emotion". |
 | `MemoryModule` | Later | Partly | Useful for map memory or history when local view is limited, but less necessary if full coordinates/grid are available. |
 | `VisualScreenshotModule` | Later | Partly | Only useful if we decide to feed rendered screenshots to a vision model. Current state dict is already symbolic. |
 
 ## 4. First-Version Module Set
 
-Recommended first-version env-grounded experimental module list:
+Recommended first-version module list:
 
 ```python
 [
-    PerceptionModule(),       # spatial/symbolic perception
+    PerceptionModule(),       # multimodal global map + symbolic perception
     MotorModule(),            # action proposal
-    OutcomeMonitorModule(),   # feedback/self-monitoring
+    LanguageReportModule(),   # outward report to the experimenter
 ]
 ```
 
@@ -88,14 +88,14 @@ Minimal control-only baseline:
 ]
 ```
 
-Optional diagnostic/report extension:
+Optional feedback/intervention extension:
 
 ```python
 [
     PerceptionModule(),
     MotorModule(),
-    OutcomeMonitorModule(),
-    LanguageReportModule(),   # internal broadcast report; not env-provided
+    LanguageReportModule(),
+    OutcomeMonitorModule(),   # explicit feedback/agency monitor
 ]
 ```
 
@@ -106,6 +106,7 @@ Modules should not receive identical full information.
 Current routing:
 
 - `PerceptionModule` receives:
+  - global bird's-eye map/screenshot if available through render/adapter
   - `agent_position`
   - `resource_position`
   - `base_position`
@@ -130,8 +131,9 @@ Current routing:
   - action success
 
 Important: the current Qiyuan environment does not provide language/report/query
-fields. `LanguageReportModule` is therefore not part of the env-grounded minimal
-control loop.
+fields. `LanguageReportModule` is still part of our cognitive/report pipeline
+because it is the system's spokesperson to the experimenter, not a simulator
+control component.
 
 The full state is logged in `TraceEnvelope`, but modules only consume their own
 `ModuleInput`.
@@ -139,9 +141,9 @@ The full state is logged in `TraceEnvelope`, but modules only consume their own
 ## 6. Meeting Summary
 
 The module choice should be driven by what the foraging environment actually
-exposes. With the current Qiyuan code, the defensible env-grounded first set is
-spatial perception, motor/action, and outcome monitoring for the experimental
-pipeline. For a pure navigation/control baseline, perception + motor is enough.
-`LanguageReportModule` is optional internal diagnostics/reportability
-infrastructure, not a module backed by current simulator fields. A literal
-emotion module is not justified at this stage.
+exposes and by the experimenter's need to query/report the system. With the
+current Qiyuan code, the defensible first set is multimodal/global-map
+perception, motor/action, and language report to the experimenter. For a pure
+navigation/control baseline, perception + motor is enough. `OutcomeMonitorModule`
+is optional feedback/intervention infrastructure, not a required default module.
+A literal emotion module is not justified at this stage.
