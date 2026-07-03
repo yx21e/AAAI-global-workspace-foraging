@@ -189,6 +189,90 @@ Experiment-only observability:
 The logger may be omniscient for analysis, but modules should only consume their
 own `ModuleInput`.
 
+Boss-aligned default routing:
+
+```text
+perception private_observation = global map / screenshot + symbolic global state
+motor private_observation      = nearby obstacles / blocked directions + task state
+language private_observation   = experimenter instruction / report query
+global_broadcast               = previous ignited or maintained workspace content
+```
+
+If no proposal ignites and no old content is maintained, the trace may contain a
+`no_ignition` placeholder for bookkeeping. That placeholder is not treated as a
+real `global_broadcast` for the next cognitive cycle.
+
+## 4.2 Fixed Importance, Ignition, and Action Routes
+
+Each module reply is rescored by a fixed deterministic function. The module does
+not get to freely report its own importance:
+
+```json
+{
+  "importance_function": {
+    "bottom_up_salience": 0.32,
+    "top_down_relevance": 0.71,
+    "salience_weight": 0.55,
+    "relevance_weight": 0.45,
+    "encoder": "HashingSentenceEncoder"
+  }
+}
+```
+
+Workspace metadata records whether the all-or-none ignition threshold was
+crossed:
+
+```json
+{
+  "workspace": {
+    "ignited": true,
+    "maintained": false,
+    "ignition_threshold": 0.25,
+    "strength": 1.0
+  }
+}
+```
+
+If no proposal crosses the threshold, the previous content can be maintained and
+decayed:
+
+```json
+{
+  "workspace": {
+    "ignited": false,
+    "maintained": true,
+    "strength": 0.85,
+    "age": 1
+  }
+}
+```
+
+Actions record whether they came from the workspace broadcast or the independent
+non-workspace motor threshold:
+
+```json
+{
+  "env_action": {
+    "command": "RIGHT",
+    "should_step": true,
+    "metadata": {
+      "action_route": "non_workspace_motor_threshold",
+      "motor_importance": 0.038,
+      "motor_execution_threshold": 0.02
+    }
+  }
+}
+```
+
+Route meanings:
+
+| `action_route` | Meaning |
+|---|---|
+| `workspace_broadcast` | The active workspace broadcast carried an explicit simulator action. |
+| `non_workspace_motor_threshold` | The motor proposal exceeded `motor_execution_threshold` even though it did not need to win workspace ignition. |
+| `no_action_threshold_not_met` | No valid action was requested by broadcast and motor did not cross its execution threshold. |
+| `forced_action` | Experiment config overrode normal resolution for intervention/debugging. |
+
 ## 5. Code Utilities Already Implemented
 
 - `gwt_agent.core.types.EnvAction`

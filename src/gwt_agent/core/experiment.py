@@ -14,6 +14,12 @@ class ExperimentConfig:
     score_modifiers: Dict[str, float] = field(default_factory=dict)
     forced_action: Optional[str] = None
     no_op_action: str = "NOOP"
+    salience_weight: float = 0.55
+    relevance_weight: float = 0.45
+    ignition_threshold: float = 0.25
+    workspace_decay: float = 0.85
+    workspace_maintenance_steps: int = 4
+    motor_execution_threshold: float = 0.02
     metadata: JsonDict = field(default_factory=dict)
 
     def is_disabled(self, module_name: str) -> bool:
@@ -30,6 +36,11 @@ class ExperimentConfig:
             confidence=proposal.confidence,
             action_hint=proposal.action_hint,
             rationale=proposal.rationale,
+            salience_score=proposal.salience_score,
+            goal_relevance_score=proposal.goal_relevance_score,
+            uptake_score=proposal.uptake_score * factor
+            if proposal.uptake_score is not None
+            else None,
             metadata={**proposal.metadata, "score_modifier": factor},
         )
 

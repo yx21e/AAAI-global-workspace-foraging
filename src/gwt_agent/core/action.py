@@ -24,6 +24,7 @@ class ActionResolver:
                 broadcast=broadcast,
                 source_module="experiment_config",
                 confidence=broadcast.confidence,
+                route="forced_action",
             )
         if broadcast.action_hint:
             return self._from_command(
@@ -31,6 +32,7 @@ class ActionResolver:
                 broadcast=broadcast,
                 source_module=broadcast.winner_module,
                 confidence=broadcast.confidence,
+                route="workspace_broadcast",
             )
 
         motor_proposals = [
@@ -40,19 +42,28 @@ class ActionResolver:
         ]
         if motor_proposals:
             best_motor = max(motor_proposals, key=lambda proposal: proposal.importance_score)
-            return self._from_command(
-                command=best_motor.action_hint or self.config.no_op_action,
-                broadcast=broadcast,
-                source_module=best_motor.module_name,
-                confidence=best_motor.confidence,
-            )
+            motor_score = best_motor.uptake_score
+            if motor_score is None:
+                motor_score = best_motor.importance_score
+            if motor_score >= self.config.motor_execution_threshold:
+                return self._from_command(
+                    command=best_motor.action_hint or self.config.no_op_action,
+                    broadcast=broadcast,
+                    source_module=best_motor.module_name,
+                    confidence=best_motor.confidence,
+                    route="non_workspace_motor_threshold",
+                    route_metadata={
+                        "motor_importance": motor_score,
+                        "motor_execution_threshold": self.config.motor_execution_threshold,
+                    },
+                )
 
-        fallback = self._fallback_from_any_action_hint(proposal_list)
         return self._from_command(
-            command=fallback or self.config.no_op_action,
+            command=self.config.no_op_action,
             broadcast=broadcast,
             source_module=broadcast.winner_module,
             confidence=broadcast.confidence,
+            route="no_action_threshold_not_met",
         )
 
     def _fallback_from_any_action_hint(
@@ -71,8 +82,14 @@ class ActionResolver:
         broadcast: WorkspaceBroadcast,
         source_module: Optional[str],
         confidence: Optional[float],
+        route: str,
+        route_metadata: Optional[dict] = None,
     ) -> EnvAction:
         normalized = (command or self.config.no_op_action).upper()
+        metadata = {
+            "action_route": route,
+            **(route_metadata or {}),
+        }
         if normalized in {"UP", "DOWN", "LEFT", "RIGHT"}:
             return EnvAction(
                 action_type="MOVE",
@@ -82,7 +99,7 @@ class ActionResolver:
                 confidence=confidence,
                 source_module=source_module,
                 source_timestamp=broadcast.timestamp,
-                metadata={"qiyuan_env_action": normalized},
+                metadata={**metadata, "qiyuan_env_action": normalized},
             )
         if normalized == "PICKUP":
             return EnvAction(
@@ -92,7 +109,7 @@ class ActionResolver:
                 confidence=confidence,
                 source_module=source_module,
                 source_timestamp=broadcast.timestamp,
-                metadata={"qiyuan_env_action": "PICKUP"},
+                metadata={**metadata, "qiyuan_env_action": "PICKUP"},
             )
         if normalized in {"NOOP", "WAIT", "STAY", "NONE"}:
             return EnvAction(
@@ -102,7 +119,7 @@ class ActionResolver:
                 confidence=confidence,
                 source_module=source_module,
                 source_timestamp=broadcast.timestamp,
-                metadata={"qiyuan_env_action": None},
+                metadata={**metadata, "qiyuan_env_action": None},
             )
         return EnvAction(
             action_type="INVALID",
@@ -112,6 +129,7 @@ class ActionResolver:
             source_module=source_module,
             source_timestamp=broadcast.timestamp,
             metadata={
+                **metadata,
                 "qiyuan_env_action": None,
                 "reason": "unsupported_action_for_foraging_env",
             },

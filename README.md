@@ -21,19 +21,32 @@ class EnvironmentAdapter:
 ## Current Flow
 
 ```text
-EnvironmentAdapter
+Qiyuan simulator output
+  -> EnvironmentAdapter builds EnvironmentState
   -> InputRouter builds module-specific ModuleInput
-  -> specialized modules produce ModuleProposal from private input + broadcast
-  -> AttentionGate computes uptake scores
-  -> CentralWorkspace selects winner and updates WorkspaceState
-  -> WorkspaceBroadcast
+       perception: previous broadcast + global visual map/screenshot
+       motor: previous broadcast + nearby obstacle state
+       language: previous broadcast + experimenter instruction
+  -> specialized modules produce one reply / ModuleProposal each
+  -> fixed deterministic ImportanceScorer
+       bottom-up salience = private-input change from previous step
+       top-down relevance = similarity(reply, task goal + previous broadcast)
+  -> CentralWorkspace all-or-none ignition
+       winner must be highest score and exceed ignition_threshold
+       otherwise old workspace content is maintained and decays
+  -> WorkspaceBroadcast to all three modules
   -> ActionResolver
-  -> EnvironmentAdapter.step(action)
+       workspace action route if active broadcast asks for action
+       non-workspace motor route if motor importance exceeds motor threshold
+  -> standardized EnvAction for Qiyuan
   -> TraceLogger writes JSONL
 ```
 
-Routine, low-conflict actions can later be handled by an explicit automatic
-route, but the default scaffold logs the full workspace route.
+The motor route threshold is independent from the workspace ignition threshold,
+so threshold-level / non-workspace actions can be studied separately.
+If no proposal crosses the ignition threshold and no old content is still
+maintained, the trace records a `no_ignition` placeholder, but that placeholder
+is not fed back as a real broadcast on the next cycle.
 
 ## Quick Start
 
@@ -54,6 +67,13 @@ To run against Qiyuan's actual simulator, install the simulator-side dependency:
 
 ```bash
 python -m pip install -r requirements-foraging.txt
+```
+
+To use a sentence-transformers model instead of the built-in deterministic
+hashing encoder, install the optional encoder dependency:
+
+```bash
+python -m pip install -r requirements-encoder.txt
 ```
 
 ## Qiyuan Handoff
@@ -89,7 +109,8 @@ else:
 
 - `src/gwt_agent/core/types.py`: shared data structures.
 - `src/gwt_agent/core/router.py`: routes different private inputs to modules.
-- `src/gwt_agent/core/attention.py`: attention / uptake scoring before workspace.
+- `src/gwt_agent/core/importance.py`: fixed sentence-encoder importance function.
+- `src/gwt_agent/core/attention.py`: applies deterministic importance scoring before workspace.
 - `src/gwt_agent/envs/adapter.py`: environment interface for the future 2D code.
 - `src/gwt_agent/core/workspace.py`: winner-take-all central workspace with persistent state.
 - `src/gwt_agent/core/runner.py`: one-step and multi-step execution loop.
@@ -152,10 +173,15 @@ EnvironmentState(
     timestamp=int,
     observation=raw_or_structured_observation,
     symbolic_state={
+        "global_visual_observation": ...,
+        "global_map": ...,
+        "global_screenshot": ...,
         "agent_position": ...,
         "base_position": ...,
         "resource_position": ...,
         "wall_positions": ...,
+        "nearby_obstacles": ...,
+        "blocked_directions": ...,
         "carrying_resource": ...,
         "action_success": ...,
         "resources_collected": ...,
@@ -163,7 +189,10 @@ EnvironmentState(
     available_actions=["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"],
     reward=float,
     done=bool,
-    info={...},
+    info={
+        "experimenter_instruction": ...,
+        "report_query": optional,
+    },
 )
 ```
 
@@ -180,11 +209,15 @@ to keep them explicit enough that modules and trace analysis can read them.
   - task goal and experiment config
 - Module proposals are structured; natural language is just one possible field.
 - The perception module is conceptually multimodal: global bird's-eye map /
-  screenshot plus symbolic state, with optional local view if available.
-- The first attention policy combines salience, goal relevance, confidence, and a small recurrence bonus.
-- The first workspace policy is winner-take-all by uptake score.
-- If the winning broadcast has no `action_hint`, the resolver falls back to the
-  best motor proposal, then `NOOP`.
+  screenshot plus symbolic state. It is not routed a local neighborhood view in
+  the default boss-aligned pipeline.
+- Importance is not self-reported by modules. A fixed scorer computes bottom-up
+  salience and top-down relevance with a sentence-encoder style interface.
+- The first workspace policy is all-or-none ignition with a configurable threshold.
+- If no proposal crosses the ignition threshold, the previous workspace content
+  is maintained for several steps and decays over time.
+- If the broadcast asks for an action, the resolver executes it. Separately, a
+  high-importance motor proposal can execute through the non-workspace motor route.
 - Ablations are centralized in `ExperimentConfig`, not scattered inside modules.
 
 ## First-Version Module Set

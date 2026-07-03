@@ -92,16 +92,23 @@ class MockGridAdapter(EnvironmentAdapter):
             "step_count": self.timestamp,
             "resources_collected": self.resources_collected,
             "wall_positions": list(self.config.hazard_positions),
+            "nearby_obstacles": self._nearby_hazards(),
+            "blocked_directions": self._blocked_directions(),
             "grid_size": self.config.width,
+            "global_map": self._global_map(),
+            "global_visual_observation": "mock_global_grid_map",
         }
         return EnvironmentState(
             timestamp=self.timestamp,
             observation=symbolic,
             symbolic_state=symbolic,
-            available_actions=["UP", "DOWN", "LEFT", "RIGHT", "NOOP"],
+            available_actions=["UP", "DOWN", "LEFT", "RIGHT", "PICKUP", "NOOP"],
             reward=reward,
             done=self.done,
-            info={"env_name": "mock_grid"},
+            info={
+                "env_name": "mock_grid",
+                "experimenter_instruction": "collect_resource_and_return",
+            },
         )
 
     def _nearby_hazards(self) -> List[Position]:
@@ -111,3 +118,34 @@ class MockGridAdapter(EnvironmentAdapter):
             if abs(hx - x) + abs(hy - y) <= 1:
                 hazards.append((hx, hy))
         return hazards
+
+    def _blocked_directions(self) -> Dict[str, bool]:
+        x, y = self.agent_position
+        checks = {
+            "UP": (x, y - 1),
+            "DOWN": (x, y + 1),
+            "LEFT": (x - 1, y),
+            "RIGHT": (x + 1, y),
+        }
+        return {
+            action: (
+                pos in self.config.hazard_positions
+                or pos[0] < 0
+                or pos[1] < 0
+                or pos[0] >= self.config.width
+                or pos[1] >= self.config.height
+            )
+            for action, pos in checks.items()
+        }
+
+    def _global_map(self) -> List[List[str]]:
+        grid = [["FLOOR" for _ in range(self.config.width)] for _ in range(self.config.height)]
+        for x, y in self.config.hazard_positions:
+            grid[y][x] = "WALL"
+        bx, by = self.config.base_position
+        rx, ry = self.config.resource_position
+        ax, ay = self.agent_position
+        grid[by][bx] = "BASE"
+        grid[ry][rx] = "RESOURCE"
+        grid[ay][ax] = "AGENT"
+        return grid

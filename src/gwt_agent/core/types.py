@@ -62,13 +62,31 @@ class WorkspaceState:
     active_content: Optional[WorkspaceBroadcast] = None
     history: List[WorkspaceBroadcast] = field(default_factory=list)
     capacity: int = 1
+    active_strength: float = 0.0
+    active_age: int = 0
+    decay_rate: float = 0.85
+    maintenance_steps: int = 4
     metadata: JsonDict = field(default_factory=dict)
 
-    def update(self, broadcast: WorkspaceBroadcast) -> None:
+    def update(self, broadcast: WorkspaceBroadcast, strength: float = 1.0) -> None:
         self.active_content = broadcast
+        self.active_strength = strength
+        self.active_age = 0
         self.history.append(broadcast)
         if len(self.history) > self.capacity:
             self.history = self.history[-self.capacity :]
+
+    def decay(self) -> Optional[WorkspaceBroadcast]:
+        if self.active_content is None:
+            return None
+        self.active_age += 1
+        self.active_strength *= self.decay_rate
+        if self.active_age > self.maintenance_steps or self.active_strength <= 0.01:
+            self.active_content = None
+            self.active_strength = 0.0
+            self.active_age = 0
+            return None
+        return self.active_content
 
     def to_dict(self) -> JsonDict:
         return to_jsonable(self)

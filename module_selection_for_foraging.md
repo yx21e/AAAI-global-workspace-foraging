@@ -59,9 +59,9 @@ derives `wall_positions` and optional local view from `env.grid`.
 
 | Candidate module | Keep now? | Directly supported by Qiyuan env? | Why |
 |---|---:|---|
-| `PerceptionModule` | Yes | Yes | It should be multimodal: read the global bird's-eye map/screenshot plus symbolic state such as agent/resource/base coordinates and walls. It is not limited to a local spatial view. |
-| `MotorModule` | Yes | Yes | It is the only module that produces simulator actions: `UP/DOWN/LEFT/RIGHT/PICKUP`. Qiyuan's env needs this output. |
-| `LanguageReportModule` | Yes | No | Qiyuan's env does not provide language/report/query fields. This module reads our internal workspace broadcast and acts as the system's outward-facing spokesperson to the experimenter, not to the 2D simulator. |
+| `PerceptionModule` | Yes | Yes | It receives previous broadcast plus global bird's-eye map/screenshot and symbolic state such as agent/resource/base coordinates and walls. It is not limited to local view. |
+| `MotorModule` | Yes | Yes | It receives previous broadcast plus nearby obstacle state and produces simulator actions: `UP/DOWN/LEFT/RIGHT/PICKUP`. It can act via workspace broadcast or the separate motor threshold route. |
+| `LanguageReportModule` | Yes | No | It receives previous broadcast plus experimenter instruction. It acts as the system's outward-facing spokesperson to the experimenter, not to the 2D simulator. |
 | `OutcomeMonitorModule` | Optional for feedback/intervention experiments | Yes | Uses `action_success`, `carrying`, `resources_collected`, `step_count`. Not part of the default module set; useful if we explicitly study feedback monitoring, agency, or delayed/mismatched outcome interventions. |
 | `EmotionModule` | No | No | Not supported by the current environment fields and not necessary for first-wave GWT pipeline. If needed later, implement as `Value/SalienceEvaluation`, not "emotion". |
 | `MemoryModule` | Later | Partly | Useful for map memory or history when local view is limited, but less necessary if full coordinates/grid are available. |
@@ -111,14 +111,13 @@ Current routing:
   - `resource_position`
   - `base_position`
   - `wall_positions`
-  - optional `local_view`
   - `action_success`
 - `MotorModule` receives:
   - `agent_position`
   - `resource_position`
   - `base_position`
   - `carrying_resource`
-  - `wall_positions`
+  - nearby obstacles / blocked directions
   - `action_success`
 - `OutcomeMonitorModule` receives:
   - `action_success`
@@ -126,14 +125,17 @@ Current routing:
   - `carrying_resource`
   - `step_count`
 - `LanguageReportModule` receives:
-  - last global broadcast from our own workspace
+  - last global broadcast from our own workspace through `global_broadcast`
+  - experimenter instruction through its private channel
   - optional report query if we inject one through `env_state.info`
-  - action success
 
 Important: the current Qiyuan environment does not provide language/report/query
 fields. `LanguageReportModule` is still part of our cognitive/report pipeline
 because it is the system's spokesperson to the experimenter, not a simulator
 control component.
+
+The previous broadcast is a shared input, not part of any module's private
+observation. This keeps the information boundary auditable in the JSON trace.
 
 The full state is logged in `TraceEnvelope`, but modules only consume their own
 `ModuleInput`.

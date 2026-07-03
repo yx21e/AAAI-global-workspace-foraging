@@ -22,10 +22,12 @@ class ForagingEnvAdapter(EnvironmentAdapter):
         env: Any,
         difficulty: int = 1,
         local_view_radius: Optional[int] = None,
+        experimenter_instruction: str = "collect_resource_and_return",
     ) -> None:
         self.env = env
         self.difficulty = difficulty
         self.local_view_radius = local_view_radius
+        self.experimenter_instruction = experimenter_instruction
         self._last_state: Optional[Dict[str, Any]] = None
 
     def reset(self) -> EnvironmentState:
@@ -58,6 +60,9 @@ class ForagingEnvAdapter(EnvironmentAdapter):
                 radius=self.local_view_radius,
             )
         symbolic = {
+            "global_visual_observation": "qiyuan_global_grid_map",
+            "global_map": self._global_map(),
+            "global_screenshot": state.get("global_screenshot"),
             "agent_position": state.get("agent_pos"),
             "resource_position": state.get("resource_pos"),
             "base_position": state.get("base_pos"),
@@ -67,6 +72,8 @@ class ForagingEnvAdapter(EnvironmentAdapter):
             "resources_collected": state.get("resources_collected"),
             "step_count": state.get("step_count"),
             "wall_positions": wall_positions,
+            "nearby_obstacles": self._nearby_obstacles(state.get("agent_pos")),
+            "blocked_directions": self._blocked_directions(state.get("agent_pos")),
             "grid_size": getattr(self.env, "grid_size", None),
         }
         if local_view is not None:
@@ -82,6 +89,11 @@ class ForagingEnvAdapter(EnvironmentAdapter):
                 "env_name": "qiyuan_foraging",
                 "difficulty": self.difficulty,
                 "action_success": state.get("action_success"),
+                "experimenter_instruction": state.get(
+                    "experimenter_instruction",
+                    self.experimenter_instruction,
+                ),
+                "report_query": state.get("report_query"),
             },
         )
 
@@ -95,6 +107,63 @@ class ForagingEnvAdapter(EnvironmentAdapter):
                 if value == 1:
                     walls.append((x, y))
         return walls
+
+    def _global_map(self):
+        grid = getattr(self.env, "grid", None)
+        if grid is None:
+            return None
+        resource = state_tuple(getattr(self.env, "resource_pos", None))
+        base = state_tuple(getattr(self.env, "base_pos", None))
+        agent = state_tuple(getattr(self.env, "agent_pos", None))
+        rendered = []
+        for y, row in enumerate(grid):
+            rendered_row = []
+            for x, value in enumerate(row):
+                pos = (x, y)
+                if agent is not None and pos == agent:
+                    rendered_row.append("AGENT")
+                elif resource is not None and pos == resource:
+                    rendered_row.append("RESOURCE")
+                elif base is not None and pos == base:
+                    rendered_row.append("BASE")
+                elif value == 1:
+                    rendered_row.append("WALL")
+                else:
+                    rendered_row.append("FLOOR")
+            rendered.append(rendered_row)
+        return rendered
+
+    def _nearby_obstacles(self, center) -> List[Tuple[int, int]]:
+        blocked = self._blocked_positions(center)
+        return [position for _, position in blocked]
+
+    def _blocked_directions(self, center) -> Dict[str, bool]:
+        blocked = {direction: True for direction, _ in self._blocked_positions(center)}
+        return {
+            "UP": blocked.get("UP", False),
+            "DOWN": blocked.get("DOWN", False),
+            "LEFT": blocked.get("LEFT", False),
+            "RIGHT": blocked.get("RIGHT", False),
+        }
+
+    def _blocked_positions(self, center):
+        grid = getattr(self.env, "grid", None)
+        if grid is None or center is None:
+            return []
+        x, y = center
+        candidates = {
+            "UP": (x, y - 1),
+            "DOWN": (x, y + 1),
+            "LEFT": (x - 1, y),
+            "RIGHT": (x + 1, y),
+        }
+        blocked = []
+        for direction, (nx, ny) in candidates.items():
+            if ny < 0 or nx < 0 or ny >= len(grid) or nx >= len(grid[ny]):
+                blocked.append((direction, (nx, ny)))
+            elif grid[ny][nx] == 1:
+                blocked.append((direction, (nx, ny)))
+        return blocked
 
     def _local_view(self, center, radius: int):
         grid = getattr(self.env, "grid", None)

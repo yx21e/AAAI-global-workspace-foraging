@@ -1,47 +1,42 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from gwt_agent.core.experiment import ExperimentConfig
-from gwt_agent.core.types import ModuleProposal, WorkspaceState
-
-
-@dataclass
-class AttentionWeights:
-    salience: float = 0.55
-    goal_relevance: float = 0.35
-    confidence: float = 0.10
+from gwt_agent.core.importance import DeterministicImportanceScorer, ImportanceWeights
+from gwt_agent.core.types import ModuleInput, ModuleProposal, WorkspaceBroadcast, WorkspaceState
 
 
 class AttentionGate:
-    """Compute uptake scores before workspace competition."""
+    """Compute fixed importance scores before workspace competition."""
 
-    def __init__(self, weights: Optional[AttentionWeights] = None) -> None:
-        self.weights = weights or AttentionWeights()
+    def __init__(self, scorer: Optional[DeterministicImportanceScorer] = None) -> None:
+        self.scorer = scorer or DeterministicImportanceScorer()
 
     def score(
         self,
         proposals: Iterable[ModuleProposal],
+        module_inputs: Dict[str, ModuleInput],
+        previous_private_inputs: Dict[str, object],
+        last_broadcast: Optional[WorkspaceBroadcast],
         workspace_state: WorkspaceState,
         experiment: ExperimentConfig,
     ) -> List[ModuleProposal]:
+        self.scorer.weights = ImportanceWeights(
+            salience=experiment.salience_weight,
+            relevance=experiment.relevance_weight,
+        )
         scored = []
         for proposal in proposals:
-            salience = proposal.salience_score
-            if salience is None:
-                salience = proposal.importance_score
-            relevance = proposal.goal_relevance_score
-            if relevance is None:
-                relevance = proposal.importance_score
-            confidence = proposal.confidence if proposal.confidence is not None else 0.0
-            recurrence_bonus = self._recurrence_bonus(proposal, workspace_state)
-            uptake = (
-                self.weights.salience * salience
-                + self.weights.goal_relevance * relevance
-                + self.weights.confidence * confidence
-                + recurrence_bonus
+            module_input = module_inputs[proposal.module_name]
+            importance = self.scorer.score(
+                proposal=proposal,
+                module_input=module_input,
+                previous_private_input=previous_private_inputs.get(proposal.module_name),
+                last_broadcast=last_broadcast,
             )
+            recurrence_bonus = self._recurrence_bonus(proposal, workspace_state)
+            uptake = importance.importance + recurrence_bonus
             scored.append(
                 ModuleProposal(
                     module_name=proposal.module_name,
@@ -50,16 +45,18 @@ class AttentionGate:
                     confidence=proposal.confidence,
                     action_hint=proposal.action_hint,
                     rationale=proposal.rationale,
-                    salience_score=salience,
-                    goal_relevance_score=relevance,
+                    salience_score=importance.salience,
+                    goal_relevance_score=importance.relevance,
                     uptake_score=uptake,
                     metadata={
                         **proposal.metadata,
-                        "attention_gate": {
-                            "salience": salience,
-                            "goal_relevance": relevance,
-                            "confidence": confidence,
+                        "importance_function": {
+                            "bottom_up_salience": importance.salience,
+                            "top_down_relevance": importance.relevance,
+                            "salience_weight": experiment.salience_weight,
+                            "relevance_weight": experiment.relevance_weight,
                             "recurrence_bonus": recurrence_bonus,
+                            "encoder": self.scorer.encoder.__class__.__name__,
                         },
                     },
                 )

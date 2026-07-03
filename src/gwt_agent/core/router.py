@@ -80,11 +80,13 @@ class InputRouter:
         lower_name = module_name.lower()
         if lower_name.startswith("perception"):
             return {
+                "global_visual_observation": state.get("global_visual_observation"),
+                "global_map": state.get("global_map"),
+                "global_screenshot": state.get("global_screenshot"),
                 "agent_position": state.get("agent_position"),
                 "resource_position": state.get("resource_position"),
                 "base_position": state.get("base_position"),
                 "wall_positions": state.get("wall_positions", state.get("hazard_positions")),
-                "local_view": state.get("local_view"),
                 "action_success": state.get("action_success"),
                 "grid_size": state.get("grid_size"),
             }
@@ -94,7 +96,8 @@ class InputRouter:
                 "resource_position": state.get("resource_position"),
                 "base_position": state.get("base_position"),
                 "carrying_resource": state.get("carrying_resource"),
-                "wall_positions": state.get("wall_positions", state.get("hazard_positions")),
+                "nearby_obstacles": state.get("nearby_obstacles", state.get("hazards_nearby")),
+                "blocked_directions": state.get("blocked_directions", {}),
                 "action_success": state.get("action_success"),
             }
         if "outcome" in lower_name or "monitor" in lower_name:
@@ -106,9 +109,11 @@ class InputRouter:
             }
         if "language" in lower_name or "report" in lower_name:
             return {
-                "last_broadcast": last_broadcast_to_dict(last_broadcast),
+                "experimenter_instruction": env_state.info.get(
+                    "experimenter_instruction",
+                    self.task_goal,
+                ),
                 "report_query": env_state.info.get("report_query"),
-                "action_success": state.get("action_success"),
             }
         return {
             "task_goal": self.task_goal,
@@ -118,13 +123,13 @@ class InputRouter:
     def _routing_policy_name(self, module_name: str) -> str:
         lower_name = module_name.lower()
         if lower_name.startswith("perception"):
-            return "sensory_private_input"
+            return "global_visual_private_input"
         if lower_name.startswith("motor"):
-            return "motor_task_state"
+            return "nearby_obstacle_private_input"
         if "outcome" in lower_name or "monitor" in lower_name:
             return "outcome_feedback_input"
         if "language" in lower_name or "report" in lower_name:
-            return "broadcast_report_input"
+            return "experimenter_instruction_private_input"
         return "broadcast_plus_private_state"
 
 

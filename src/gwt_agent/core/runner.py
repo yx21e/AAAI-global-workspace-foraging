@@ -32,8 +32,12 @@ class WorkspaceRunner:
     ) -> None:
         self.env_adapter = env_adapter
         self.modules: List[BaseModule] = list(modules)
-        self.workspace = workspace or CentralWorkspace()
         self.experiment = experiment or ExperimentConfig()
+        self.workspace = workspace or CentralWorkspace(
+            ignition_threshold=self.experiment.ignition_threshold,
+            decay_rate=self.experiment.workspace_decay,
+            maintenance_steps=self.experiment.workspace_maintenance_steps,
+        )
         self.logger = logger or TraceLogger()
         self.action_resolver = ActionResolver(self.experiment)
         self.run_id = run_id or f"run-{uuid4().hex[:8]}"
@@ -41,6 +45,7 @@ class WorkspaceRunner:
         self.attention_gate = attention_gate or AttentionGate()
         self.max_cycles_per_env_step = max_cycles_per_env_step
         self.last_broadcast: Optional[WorkspaceBroadcast] = None
+        self.previous_private_inputs = {}
         self.shared_memory = {}
         self.cycle_t = 0
 
@@ -95,6 +100,9 @@ class WorkspaceRunner:
 
         proposals = self.attention_gate.score(
             raw_proposals,
+            module_inputs=module_inputs,
+            previous_private_inputs=self.previous_private_inputs,
+            last_broadcast=self.last_broadcast,
             workspace_state=self.workspace.state,
             experiment=self.experiment,
         )
@@ -124,10 +132,23 @@ class WorkspaceRunner:
         )
         self.logger.log(trace)
 
-        self.last_broadcast = broadcast
+        self.last_broadcast = self._broadcast_signal_for_next_cycle(broadcast)
+        self.previous_private_inputs = {
+            name: deepcopy(module_input.private_observation)
+            for name, module_input in module_inputs.items()
+        }
         self._current_state = next_state
         self.cycle_t += 1
         return trace
+
+    def _broadcast_signal_for_next_cycle(
+        self,
+        broadcast: WorkspaceBroadcast,
+    ) -> Optional[WorkspaceBroadcast]:
+        workspace_metadata = broadcast.metadata.get("workspace", {})
+        if workspace_metadata.get("ignited") or workspace_metadata.get("maintained"):
+            return broadcast
+        return None
 
     def step_envelope(self) -> TraceEnvelope:
         trace = self.step()

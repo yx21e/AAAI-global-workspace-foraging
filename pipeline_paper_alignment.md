@@ -1,6 +1,6 @@
 # Pipeline Paper Alignment Audit
 
-Date: 2026-06-28
+Date: 2026-07-03
 
 ## Bottom Line
 
@@ -23,14 +23,14 @@ Everything else should be described as inherited from prior work.
 
 | Pipeline element | Existing-paper basis | Current implementation status | How we should describe it |
 |---|---|---|---|
-| Specialized processors/modules | Baars GWT; Dehaene GNW; LIDA | Implemented as `BaseModule` subclasses: multimodal perception, motor, language report, optional outcome monitor | Standard GWT/GNW assumption, not our innovation |
-| Limited central workspace | Baars GWT; GNW; Goyal shared workspace | Implemented as `CentralWorkspace(capacity=1)` | Standard bottleneck / workspace access mechanism |
-| Competition for access | Baars GWT; LIDA coalitions; Goyal bandwidth-limited specialist competition | Implemented as `AttentionGate` scoring plus `select_winner` | Paper-derived, but our scoring formula is a simple engineering approximation |
-| Global broadcast | Baars GWT; GNW; LIDA; Goyal; Dossa | Implemented as `WorkspaceBroadcast`, fed into next-cycle module inputs | Core paper mechanism |
-| Recurrent / working-memory workspace state | GNW recurrent ignition; Dossa embodied GWT agent; LIDA cognitive cycle | Implemented as persistent `WorkspaceState.history` / `active_content` | Paper-derived, but current memory is minimal |
-| Action selection after broadcast | LIDA cognitive cycle; GWT action selection phase | Implemented as downstream `ActionResolver` after broadcast | Paper-derived separation: workspace content is not automatically an action |
-| Automatic / direct action route | GWT/GNW distinction between controlled conscious access and automatic specialized processing | Future design option for reflex-like or overlearned simulator actions such as immediate `PICKUP` when already at the resource | Paper-consistent only if described as automatic local processing, not as a replacement for workspace competition |
-| Module-specific information access | GWT/GNW specialized processors; VanRullen & Kanai heterogeneous specialist modules | Implemented in `InputRouter`; modules do not all receive the same raw state | Paper-consistent; exact routing is environment-specific |
+| Specialized processors/modules | Dossa et al. 2024; Butlin et al. 2025; Goyal et al. 2021 | Implemented as `BaseModule` subclasses: multimodal perception, motor, language report, optional outcome monitor | Standard GWT-style assumption, not our innovation |
+| Limited central workspace | Dossa et al. 2024; Butlin et al. 2025; Goyal et al. 2021 | Implemented as `CentralWorkspace(capacity=1)` | Standard bottleneck / workspace access mechanism |
+| Competition for access | Goyal et al. 2021; Dossa et al. 2024; Nakanishi et al. 2025 | Implemented as fixed importance scoring plus `select_winner` | Paper-derived selection-broadcast structure; our exact scoring formula is a simple engineering proxy |
+| Global broadcast | Dossa et al. 2024; Goyal et al. 2021; Butlin et al. 2025 | Implemented as `WorkspaceBroadcast`, fed into next-cycle module inputs when ignited or maintained | Core paper mechanism |
+| Recurrent / working-memory workspace state | Dossa et al. 2024; Nakanishi et al. 2025 | Implemented as persistent `WorkspaceState.active_content` with maintenance and decay | Paper-derived, but current memory is minimal |
+| Action selection after broadcast | Dossa et al. 2024; Nakanishi et al. 2025 | Implemented as downstream `ActionResolver` after broadcast | Paper-consistent separation: workspace content is not automatically an action |
+| Automatic / direct action route | Controlled-vs-automatic distinction in GWT/GNW; project prompt | Implemented as `motor_execution_threshold` and logged as `non_workspace_motor_threshold` | Paper-consistent only if described as automatic local processing, not as a replacement for workspace competition |
+| Module-specific information access | Dossa et al. 2024; VanRullen & Kanai 2021 | Implemented in `InputRouter`; modules do not all receive the same raw state | Paper-consistent; exact routing is environment-specific |
 | Shared representation / message format | VanRullen & Kanai global latent workspace; Goyal shared workspace | Implemented as structured Python dataclasses / JSON trace | Our engineering adaptation: structured messages instead of learned latent vectors |
 | Decoupled env time and cognitive cycle time | LIDA cognitive cycle; real-time selection-broadcast discussions | Implemented as `env_t` and `cycle_t`; runner supports multiple cycles per env step | Paper-consistent design; current runner is still semi-synchronous |
 | Embodied environment interface | Dossa embodied GWT agent; robotics / real-time GWT work | Implemented as `EnvironmentAdapter` and `ForagingEnvAdapter` | Paper-consistent embodied-agent wrapper |
@@ -84,22 +84,12 @@ Everything else should be described as inherited from prior work.
 
 - Baars, Global Workspace Theory: specialized processors, limited workspace,
   competition, global broadcast.
-- Dehaene, Kerszberg & Changeux, 1998, GNW model: two computational spaces and
-  global access through long-distance workspace connectivity; automatic
-  specialized processors can handle routine mappings without workspace-level
-  coordination, while effortful tasks require global coordination.
-- Mashour, Roelfsema, Changeux & Dehaene, 2020: nonlinear ignition, recurrence,
-  sustained globally accessible representation.
-- VanRullen & Kanai, 2021: deep-learning route with specialized modules and a
-  shared amodal global latent workspace.
-- Goyal et al., 2021: shared, bandwidth-limited workspace for neural specialist
-  coordination.
-- Baars & Franklin / LIDA: cognitive cycle of understanding, consciousness /
-  attention, and action selection.
-- Dossa et al., 2024: embodied GWT agent using working memory and broadcast
-  back into modality encoders.
-- Nakanishi et al., 2025: selection-broadcast cycle in dynamic real-time
-  settings.
+- [Dossa et al., 2024](https://www.frontiersin.org/journals/computational-neuroscience/articles/10.3389/fncom.2024.1352685/full): embodied GWT agent using working memory and broadcast back into modality encoders.
+- [Butlin et al., 2025](https://www.cell.com/trends/cognitive-sciences/fulltext/S1364-6613%2825%2900286-4): AI consciousness indicators including parallel modules, attention bottleneck / limited workspace, and global broadcast.
+- [Nakanishi et al., 2025](https://arxiv.org/abs/2505.13969): selection-broadcast cycle in dynamic real-time settings.
+- [Goyal et al., 2021](https://arxiv.org/abs/2103.01197): shared, bandwidth-limited workspace for neural specialist coordination.
+- [VanRullen & Kanai, 2021](https://arxiv.org/abs/2012.10390): deep-learning route with specialized modules and a shared amodal global latent workspace.
+- [Goldstein & Kirk-Giannini, 2024](https://arxiv.org/abs/2410.11407): language-agent architectures assessed through GWT-like conditions.
 
 ## Current Answer To "Are We Mostly Paper-Based?"
 

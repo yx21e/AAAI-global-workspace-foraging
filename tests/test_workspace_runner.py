@@ -52,6 +52,7 @@ class WorkspaceRunnerTest(unittest.TestCase):
             self.assertIn("selected_action", record)
             self.assertIn("env_action", record)
             self.assertIn("module_states", record)
+            self.assertIn("importance_function", record["proposals"][0]["metadata"])
 
     def test_disabled_module_is_not_logged(self):
         runner = WorkspaceRunner(
@@ -93,6 +94,71 @@ class WorkspaceRunnerTest(unittest.TestCase):
             self.assertIn("action", records[0])
             self.assertEqual(records[0]["action"], envelopes[0].env_action.command)
             self.assertEqual(records[0]["should_step"], envelopes[0].env_action.should_step)
+
+    def test_motor_threshold_route_can_execute_without_workspace_action(self):
+        runner = WorkspaceRunner(
+            env_adapter=MockGridAdapter(),
+            modules=make_modules(),
+            experiment=ExperimentConfig(
+                motor_execution_threshold=0.02,
+                ignition_threshold=0.25,
+            ),
+        )
+
+        traces = runner.run(num_steps=8)
+        threshold_actions = [
+            trace
+            for trace in traces
+            if trace.env_action
+            and trace.env_action.metadata.get("action_route")
+            == "non_workspace_motor_threshold"
+        ]
+
+        self.assertTrue(threshold_actions)
+        self.assertTrue(all(trace.env_action.should_step for trace in threshold_actions))
+
+    def test_module_private_channels_stay_separate_from_broadcast(self):
+        runner = WorkspaceRunner(
+            env_adapter=MockGridAdapter(),
+            modules=make_modules(),
+        )
+
+        trace = runner.step()
+        module_inputs = {
+            state.module_name: state.module_input
+            for state in trace.module_states
+        }
+
+        self.assertNotIn(
+            "local_view",
+            module_inputs["perception"].private_observation,
+        )
+        self.assertNotIn(
+            "last_broadcast",
+            module_inputs["language_report"].private_observation,
+        )
+        self.assertIsNone(module_inputs["language_report"].global_broadcast)
+
+    def test_no_ignition_placeholder_is_not_rebroadcast(self):
+        runner = WorkspaceRunner(
+            env_adapter=MockGridAdapter(),
+            modules=make_modules(),
+            experiment=ExperimentConfig(ignition_threshold=2.0),
+        )
+
+        first = runner.step()
+        self.assertFalse(first.broadcast.metadata["workspace"]["ignited"])
+        self.assertFalse(first.broadcast.metadata["workspace"]["maintained"])
+        self.assertIsNone(runner.last_broadcast)
+
+        second = runner.step()
+        module_inputs = {
+            state.module_name: state.module_input
+            for state in second.module_states
+        }
+        self.assertIsNone(module_inputs["perception"].global_broadcast)
+        self.assertIsNone(module_inputs["motor"].global_broadcast)
+        self.assertIsNone(module_inputs["language_report"].global_broadcast)
 
 
 if __name__ == "__main__":

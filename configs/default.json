@@ -3,6 +3,12 @@
   "score_modifiers": {},
   "forced_action": null,
   "no_op_action": "NOOP",
+  "salience_weight": 0.55,
+  "relevance_weight": 0.45,
+  "ignition_threshold": 0.25,
+  "workspace_decay": 0.85,
+  "workspace_maintenance_steps": 4,
+  "motor_execution_threshold": 0.02,
   "metadata": {
     "description": "Default run with perception, motor, and language report modules. Outcome monitor is optional for feedback/intervention experiments."
   }

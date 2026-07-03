@@ -20,11 +20,12 @@ class MotorModule(BaseModule):
         agent_pos = tuple(state.get("agent_position", (0, 0)))
         carrying = bool(state.get("carrying_resource", False))
         target = tuple(state.get("base_position" if carrying else "resource_position", agent_pos))
-        walls = {tuple(item) for item in state.get("wall_positions", [])}
+        nearby_obstacles = {tuple(item) for item in state.get("nearby_obstacles", [])}
+        blocked_directions = state.get("blocked_directions", {})
         if not carrying and state.get("resource_position") is not None and agent_pos == target:
             action = "PICKUP"
         else:
-            action = self._choose_action(agent_pos, target, walls)
+            action = self._choose_action(agent_pos, target, nearby_obstacles, blocked_directions)
 
         return ModuleProposal(
             module_name=self.name,
@@ -32,6 +33,7 @@ class MotorModule(BaseModule):
                 "goal": "return_to_base" if carrying else "collect_resource",
                 "target_position": target,
                 "planned_action": action,
+                "blocked_directions": blocked_directions,
             },
             importance_score=0.65,
             confidence=0.7,
@@ -46,6 +48,7 @@ class MotorModule(BaseModule):
         agent_pos: Position,
         target: Position,
         hazards: set,
+        blocked_directions,
     ) -> str:
         x, y = agent_pos
         tx, ty = target
@@ -67,11 +70,11 @@ class MotorModule(BaseModule):
             ]
         )
 
-        action = self._first_safe_action(candidates, hazards)
+        action = self._first_safe_action(candidates, hazards, blocked_directions)
         return action or "NOOP"
 
-    def _first_safe_action(self, candidates, hazards: set) -> Optional[str]:
+    def _first_safe_action(self, candidates, hazards: set, blocked_directions) -> Optional[str]:
         for action, pos in candidates:
-            if pos not in hazards:
+            if not blocked_directions.get(action, False) and pos not in hazards:
                 return action
         return None
