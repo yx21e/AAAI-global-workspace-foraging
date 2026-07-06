@@ -193,6 +193,19 @@ summary under:
 runs/qiyuan_integrated/
 ```
 
+It also writes a clickable browser viewer:
+
+```text
+runs/qiyuan_integrated/<run_id>_viewer.html
+```
+
+For an existing run, rebuild the viewer with:
+
+```bash
+PYTHONPATH=src python scripts/build_qiyuan_viewer.py \
+  --run-id <run_id>
+```
+
 Replay the historical record exactly:
 
 ```bash

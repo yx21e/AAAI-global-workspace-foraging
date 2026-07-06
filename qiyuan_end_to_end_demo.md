@@ -57,8 +57,20 @@ runs/qiyuan_integrated/<run_id>_trace.jsonl       full per-cycle trace
 runs/qiyuan_integrated/<run_id>_envelopes.jsonl   full standardized replay file
 runs/qiyuan_integrated/<run_id>_actions.jsonl     minimal Qiyuan action stream
 runs/qiyuan_integrated/<run_id>_frames/           rendered PNG frames
+runs/qiyuan_integrated/<run_id>_viewer.html       clickable browser viewer
 runs/qiyuan_integrated/<run_id>_summary.json      short demo summary
 ```
+
+For an existing run:
+
+```bash
+PYTHONPATH=src python3 scripts/build_qiyuan_viewer.py \
+  --run-id qiyuan-d2-seed7
+```
+
+Open the generated `*_viewer.html` in a browser. The viewer has frame stepping,
+play/pause, a timeline slider, a PICKUP jump, action route, workspace state, and
+module scores.
 
 ## 3. Replay From Historical Records
 

@@ -21,6 +21,7 @@ from gwt_agent.envs.qiyuan_loader import load_foraging_env_class
 from gwt_agent.modules.language import LanguageReportModule
 from gwt_agent.modules.motor import MotorModule
 from gwt_agent.modules.perception import PerceptionModule
+from gwt_agent.ui.qiyuan_viewer import build_viewer
 
 
 DEFAULT_INSTRUCTION = (
@@ -54,6 +55,7 @@ def parse_args() -> argparse.Namespace:
         default=str(project_root / "runs" / "qiyuan_integrated"),
     )
     parser.add_argument("--no-render", action="store_true")
+    parser.add_argument("--no-viewer", action="store_true")
     return parser.parse_args()
 
 
@@ -135,11 +137,19 @@ def main() -> None:
         "envelope_path": str(envelope_path),
         "action_stream_path": str(action_path),
         "frame_dir": None if args.no_render else str(frame_dir),
+        "viewer_path": None,
     }
     summary_path.write_text(
         json.dumps(summary, indent=2, ensure_ascii=True),
         encoding="utf-8",
     )
+    if not args.no_render and not args.no_viewer:
+        viewer = build_viewer(run_dir=str(out_dir), run_id=run_id)
+        summary["viewer_path"] = str(viewer)
+        summary_path.write_text(
+            json.dumps(summary, indent=2, ensure_ascii=True),
+            encoding="utf-8",
+        )
     print(json.dumps(summary, indent=2, ensure_ascii=True))
 
 
