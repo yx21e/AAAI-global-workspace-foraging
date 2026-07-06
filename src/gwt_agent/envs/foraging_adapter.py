@@ -23,11 +23,13 @@ class ForagingEnvAdapter(EnvironmentAdapter):
         difficulty: int = 1,
         local_view_radius: Optional[int] = None,
         experimenter_instruction: str = "collect_resource_and_return",
+        target_resources: int = 1,
     ) -> None:
         self.env = env
         self.difficulty = difficulty
         self.local_view_radius = local_view_radius
         self.experimenter_instruction = experimenter_instruction
+        self.target_resources = target_resources
         self._last_state: Optional[Dict[str, Any]] = None
 
     def reset(self) -> EnvironmentState:
@@ -78,16 +80,20 @@ class ForagingEnvAdapter(EnvironmentAdapter):
         }
         if local_view is not None:
             symbolic["local_view"] = local_view
+        done = bool(state.get("done", False)) or (
+            int(state.get("resources_collected", 0)) >= self.target_resources
+        )
         return EnvironmentState(
             timestamp=int(state.get("step_count", 0)),
             observation=state,
             symbolic_state=symbolic,
             available_actions=FORAGING_ACTIONS,
             reward=float(state.get("resources_collected", 0)),
-            done=False,
+            done=done,
             info={
                 "env_name": "qiyuan_foraging",
                 "difficulty": self.difficulty,
+                "target_resources": self.target_resources,
                 "action_success": state.get("action_success"),
                 "experimenter_instruction": state.get(
                     "experimenter_instruction",

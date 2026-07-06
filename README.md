@@ -81,9 +81,12 @@ python -m pip install -r requirements-encoder.txt
 For simulator integration, Qiyuan can start from:
 
 - `unified_trace_action_schema.md`: full trace schema and replay contract.
+- `qiyuan_end_to_end_demo.md`: complete run/replay/demo plan.
 - `examples/action_stream_example.jsonl`: minimal action stream example.
 - `src/gwt_agent/envs/foraging_adapter.py`: adapter for the current
   `ForagingEnv` state fields.
+- `scripts/run_qiyuan_integrated.py`: run Qiyuan's env with our GWT loop.
+- `scripts/replay_qiyuan_record.py`: replay a historical full trace or action stream.
 
 The action stream fields the simulator needs are:
 
@@ -162,6 +165,53 @@ This writes:
 ```text
 runs/mock_trace_envelopes.jsonl
 runs/mock_action_stream.jsonl
+```
+
+## Run With Qiyuan's Actual Environment
+
+Clone Qiyuan's repo next to this repo and install the simulator dependency:
+
+```bash
+git clone https://github.com/llll0630/Foraging-Environment-Design.git ../qiyuan_foraging_env
+python -m pip install -r requirements-foraging.txt
+```
+
+Then run the integrated demo:
+
+```bash
+PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 1 \
+  --seed 7 \
+  --target-resources 1
+```
+
+This writes full traces, a minimal action stream, rendered frames, and a short
+summary under:
+
+```text
+runs/qiyuan_integrated/
+```
+
+Replay the historical record exactly:
+
+```bash
+PYTHONPATH=src python scripts/replay_qiyuan_record.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --mode trace \
+  --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
+  --render-dir runs/qiyuan_integrated/<run_id>_trace_replay
+```
+
+Replay only the minimal action stream through Qiyuan `env.step(action)`:
+
+```bash
+PYTHONPATH=src python scripts/replay_qiyuan_record.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --mode action \
+  --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
+  --actions runs/qiyuan_integrated/<run_id>_actions.jsonl \
+  --render-dir runs/qiyuan_integrated/<run_id>_action_replay
 ```
 
 ## Expected Adapter Contract for the Real 2D Environment

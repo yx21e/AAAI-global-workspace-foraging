@@ -8,7 +8,10 @@ from pathlib import Path
 from gwt_agent.core.export import trace_step_to_envelope, write_action_stream
 from gwt_agent.core.experiment import ExperimentConfig
 from gwt_agent.core.logger import TraceLogger
+from gwt_agent.core.router import InputRouter
 from gwt_agent.core.runner import WorkspaceRunner
+from gwt_agent.core.types import EnvironmentState
+from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
 from gwt_agent.envs.mock_env import MockGridAdapter
 from gwt_agent.modules.language import LanguageReportModule
 from gwt_agent.modules.motor import MotorModule
@@ -159,6 +162,84 @@ class WorkspaceRunnerTest(unittest.TestCase):
         self.assertIsNone(module_inputs["perception"].global_broadcast)
         self.assertIsNone(module_inputs["motor"].global_broadcast)
         self.assertIsNone(module_inputs["language_report"].global_broadcast)
+
+    def test_experimenter_instruction_becomes_task_goal(self):
+        env_state = EnvironmentState(
+            timestamp=0,
+            observation={},
+            symbolic_state={},
+            info={"experimenter_instruction": "collect one resource and stop"},
+        )
+        router = InputRouter(task_goal="fallback")
+        inputs = router.build_inputs(
+            modules=make_modules(),
+            env_state=env_state,
+            cycle_t=0,
+            workspace_state=runner_workspace_state(),
+            last_broadcast=None,
+            experiment=ExperimentConfig(),
+        )
+
+        self.assertEqual(
+            inputs["motor"].task_goal,
+            "collect one resource and stop",
+        )
+
+    def test_foraging_adapter_stops_at_target_resources(self):
+        env = FakeQiyuanEnv()
+        adapter = ForagingEnvAdapter(env=env, target_resources=1)
+
+        state = adapter.reset()
+        self.assertFalse(state.done)
+
+        done_state = adapter.step("RIGHT")
+        self.assertTrue(done_state.done)
+        self.assertEqual(done_state.symbolic_state["resources_collected"], 1)
+
+
+def runner_workspace_state():
+    runner = WorkspaceRunner(env_adapter=MockGridAdapter(), modules=make_modules())
+    return runner.workspace.state
+
+
+class FakeQiyuanEnv:
+    def __init__(self):
+        self.grid_size = 3
+        self.grid = [
+            [1, 1, 1],
+            [1, 0, 0],
+            [1, 1, 1],
+        ]
+        self.base_pos = (1, 1)
+        self.agent_pos = [1, 1]
+        self.resource_pos = [2, 1]
+        self.carrying = False
+        self.step_count = 0
+        self.resources_collected = 0
+
+    def reset(self, difficulty=1):
+        self.agent_pos = [1, 1]
+        self.resource_pos = [2, 1]
+        self.resources_collected = 0
+        self.step_count = 0
+        return self._state()
+
+    def step(self, action):
+        self.step_count += 1
+        self.agent_pos = [2, 1]
+        self.resources_collected = 1
+        return self._state()
+
+    def _state(self):
+        return {
+            "agent_pos": tuple(self.agent_pos),
+            "resource_pos": tuple(self.resource_pos),
+            "base_pos": self.base_pos,
+            "carrying": self.carrying,
+            "action_success": True,
+            "step_count": self.step_count,
+            "resources_collected": self.resources_collected,
+        }
 
 
 if __name__ == "__main__":

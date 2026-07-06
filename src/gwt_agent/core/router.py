@@ -61,7 +61,7 @@ class InputRouter:
             private_observation=private_observation,
             global_broadcast=last_broadcast,
             workspace_state=deepcopy(workspace_state),
-            task_goal=self.task_goal,
+            task_goal=self._task_goal(env_state),
             available_actions=env_state.available_actions,
             experiment=experiment.to_dict(),
             metadata={
@@ -69,6 +69,9 @@ class InputRouter:
                 "routing_policy": self._routing_policy_name(module_name),
             },
         )
+
+    def _task_goal(self, env_state: EnvironmentState) -> str:
+        return env_state.info.get("experimenter_instruction", self.task_goal)
 
     def _private_observation(
         self,

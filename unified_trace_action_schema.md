@@ -155,6 +155,10 @@ else:
     state = current_state
 ```
 
+For exact visualization replay, use the full envelope file because it contains
+the recorded symbolic map/state at every cognitive cycle. For simulator
+execution replay, use the minimal action stream and call Qiyuan `env.step()`.
+
 ## 4. Action Mapping
 
 | Our `EnvAction` | Qiyuan simulator call |
@@ -282,6 +286,8 @@ Route meanings:
 - `gwt_agent.core.export.write_envelopes_jsonl(...)`
 - `gwt_agent.core.export.replay_actions(...)`
 - `gwt_agent.envs.foraging_adapter.ForagingEnvAdapter`
+- `scripts/run_qiyuan_integrated.py`
+- `scripts/replay_qiyuan_record.py`
 
 ## 6. Generate Example Files
 

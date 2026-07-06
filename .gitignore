@@ -10,6 +10,5 @@ dist/
 .ruff_cache/
 .DS_Store
 
-# Generated demo traces; regenerate with scripts/export_mock_actions.py.
-runs/*.jsonl
-runs/*.png
+# Generated demo traces, frames, and replay artifacts.
+runs/

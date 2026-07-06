@@ -119,6 +119,8 @@ Current routing:
   - `carrying_resource`
   - nearby obstacles / blocked directions
   - `action_success`
+  - its own short private history of recent positions to avoid immediate
+    oscillation around obstacles
 - `OutcomeMonitorModule` receives:
   - `action_success`
   - `resources_collected`
