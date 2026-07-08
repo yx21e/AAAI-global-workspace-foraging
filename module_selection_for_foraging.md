@@ -59,13 +59,13 @@ derives `wall_positions` and optional local view from `env.grid`.
 
 | Candidate module | Keep now? | Directly supported by Qiyuan env? | Why |
 |---|---:|---|
-| `PerceptionModule` | Yes | Yes | It receives previous broadcast plus global bird's-eye map/screenshot and symbolic state such as agent/resource/base coordinates and walls. It is not limited to local view. |
-| `MotorModule` | Yes | Yes | It receives previous broadcast plus nearby obstacle state and produces simulator actions: `UP/DOWN/LEFT/RIGHT/PICKUP`. It can act via workspace broadcast or the separate motor threshold route. |
-| `LanguageReportModule` | Yes | No | It receives previous broadcast plus experimenter instruction. It acts as the system's outward-facing spokesperson to the experimenter, not to the 2D simulator. |
+| `LLMPerceptionModule` | Yes | Yes | It receives previous broadcast plus global bird's-eye map screenshot and symbolic state such as agent/resource/base coordinates and walls. It is not limited to local view. |
+| `LLMMotorModule` | Yes | Yes | It receives previous broadcast plus nearby obstacle state and produces simulator actions: `UP/DOWN/LEFT/RIGHT/PICKUP`. It can act via workspace broadcast or the separate motor threshold route. |
+| `LLMLanguageModule` | Yes | No | It receives previous broadcast plus the current experimenter report/query signal, while the persistent experimenter instruction is available as `task_goal`. It acts as the system's outward-facing spokesperson to the experimenter, not to the 2D simulator. |
 | `OutcomeMonitorModule` | Optional for feedback/intervention experiments | Yes | Uses `action_success`, `carrying`, `resources_collected`, `step_count`. Not part of the default module set; useful if we explicitly study feedback monitoring, agency, or delayed/mismatched outcome interventions. |
 | `EmotionModule` | No | No | Not supported by the current environment fields and not necessary for first-wave GWT pipeline. If needed later, implement as `Value/SalienceEvaluation`, not "emotion". |
 | `MemoryModule` | Later | Partly | Useful for map memory or history when local view is limited, but less necessary if full coordinates/grid are available. |
-| `VisualScreenshotModule` | Later | Partly | Only useful if we decide to feed rendered screenshots to a vision model. Current state dict is already symbolic. |
+| `VisualScreenshotModule` | No separate module | Partly | Rendered screenshots are now routed into `LLMPerceptionModule`, so a standalone screenshot module would duplicate perception. |
 
 ## 4. First-Version Module Set
 
@@ -73,9 +73,9 @@ Recommended first-version module list:
 
 ```python
 [
-    PerceptionModule(),       # multimodal global map + symbolic perception
-    MotorModule(),            # action proposal
-    LanguageReportModule(),   # outward report to the experimenter
+    LLMPerceptionModule(),    # multimodal global map screenshot + symbolic perception
+    LLMMotorModule(),         # action proposal
+    LLMLanguageModule(),      # outward report to the experimenter
 ]
 ```
 
@@ -83,8 +83,8 @@ Minimal control-only baseline:
 
 ```python
 [
-    PerceptionModule(),
-    MotorModule(),
+    LLMPerceptionModule(),
+    LLMMotorModule(),
 ]
 ```
 
@@ -92,9 +92,9 @@ Optional feedback/intervention extension:
 
 ```python
 [
-    PerceptionModule(),
-    MotorModule(),
-    LanguageReportModule(),
+    LLMPerceptionModule(),
+    LLMMotorModule(),
+    LLMLanguageModule(),
     OutcomeMonitorModule(),   # explicit feedback/agency monitor
 ]
 ```
@@ -126,15 +126,15 @@ Current routing:
   - `resources_collected`
   - `carrying_resource`
   - `step_count`
-- `LanguageReportModule` receives:
+- `LLMLanguageModule` receives:
   - last global broadcast from our own workspace through `global_broadcast`
-  - experimenter instruction through its private channel
+  - experimenter instruction through `module_input.task_goal`
   - optional report query if we inject one through `env_state.info`
-  - a fixed report corpus so default idle reports do not simply repeat the task
-    prompt every timestep
+  - a low-pressure idle/report candidate so default cycles do not simply repeat
+    the task prompt every timestep
 
 Important: the current Qiyuan environment does not provide language/report/query
-fields. `LanguageReportModule` is still part of our cognitive/report pipeline
+fields. `LLMLanguageModule` is still part of our cognitive/report pipeline
 because it is the system's spokesperson to the experimenter, not a simulator
 control component.
 

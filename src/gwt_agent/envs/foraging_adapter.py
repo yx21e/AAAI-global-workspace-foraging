@@ -53,6 +53,19 @@ class ForagingEnvAdapter(EnvironmentAdapter):
         self._last_state = state
         return self._convert_state(state)
 
+    def render_screenshot_to_state(
+        self,
+        state: EnvironmentState,
+        path: str,
+    ) -> str:
+        """Render the current Qiyuan map and attach the PNG path to a state."""
+        screenshot = self.env.render(path)
+        state.symbolic_state["global_screenshot"] = screenshot
+        state.info["global_screenshot"] = screenshot
+        if isinstance(state.observation, dict):
+            state.observation["global_screenshot"] = screenshot
+        return screenshot
+
     def _convert_state(self, state: Dict[str, Any]) -> EnvironmentState:
         wall_positions = self._wall_positions()
         local_view = state.get("local_view")

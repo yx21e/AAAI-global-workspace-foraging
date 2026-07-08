@@ -121,9 +121,9 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
         for state in envelope.get("module_states", []):
             proposal = state.get("proposal") or {}
             module_name = state.get("module_name")
-            if module_name == "language_report":
+            if module_name in {"language_report", "language"}:
                 content = proposal.get("content") or {}
-                language_report = content.get("verbal_report")
+                language_report = content.get("verbal_report") or content.get("summary")
             modules.append(
                 {
                     "module": module_name,

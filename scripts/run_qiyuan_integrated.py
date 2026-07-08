@@ -18,7 +18,9 @@ from gwt_agent.core.router import InputRouter
 from gwt_agent.core.runner import WorkspaceRunner
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
 from gwt_agent.envs.qiyuan_loader import load_foraging_env_class
+from gwt_agent.llm.client import build_llm_client
 from gwt_agent.modules.language import LanguageReportModule
+from gwt_agent.modules.llm_agents import LLMLanguageModule, LLMMotorModule, LLMPerceptionModule
 from gwt_agent.modules.motor import MotorModule
 from gwt_agent.modules.perception import PerceptionModule
 from gwt_agent.ui.qiyuan_viewer import build_viewer
@@ -51,6 +53,51 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--instruction", default=DEFAULT_INSTRUCTION)
     parser.add_argument(
+        "--agent-backend",
+        choices=["auto", "openai", "mock-llm", "heuristic"],
+        default="auto",
+        help=(
+            "Module backend. auto uses OpenAI when OPENAI_API_KEY and the openai "
+            "package are available, otherwise mock-llm."
+        ),
+    )
+    parser.add_argument(
+        "--openai-model",
+        default=os.getenv("OPENAI_MODEL", "gpt-5.5"),
+        help="OpenAI model for motor/language when --agent-backend openai or auto resolves to OpenAI.",
+    )
+    parser.add_argument(
+        "--openai-vision-model",
+        default=os.getenv("OPENAI_VISION_MODEL"),
+        help="OpenAI model for multimodal perception. Defaults to --openai-model.",
+    )
+    parser.add_argument("--ignition-threshold", type=float, default=0.25)
+    parser.add_argument("--salience-weight", type=float, default=0.55)
+    parser.add_argument("--relevance-weight", type=float, default=0.45)
+    parser.add_argument(
+        "--score-modifier",
+        action="append",
+        default=[],
+        metavar="MODULE=FACTOR",
+        help="Optional module score multiplier, e.g. perception=1.1. Repeatable.",
+    )
+    parser.add_argument(
+        "--workspace-recurrence-bonus",
+        type=float,
+        default=0.0,
+        help="Optional bonus for the module that won the previous workspace cycle.",
+    )
+    parser.add_argument(
+        "--report-query-every",
+        type=int,
+        default=0,
+        help="Inject an experimenter report query every N cognitive cycles; 0 disables it.",
+    )
+    parser.add_argument(
+        "--report-query",
+        default="Please summarize the currently active workspace broadcast.",
+    )
+    parser.add_argument(
         "--out-dir",
         default=str(project_root / "runs" / "qiyuan_integrated"),
     )
@@ -79,6 +126,7 @@ def main() -> None:
     action_path = out_dir / f"{run_id}_actions.jsonl"
     summary_path = out_dir / f"{run_id}_summary.json"
     frame_dir = out_dir / f"{run_id}_frames"
+    perception_dir = out_dir / f"{run_id}_perception_inputs"
 
     ForagingEnv = load_foraging_env_class(args.qiyuan_path)
     env = ForagingEnv()
@@ -88,15 +136,17 @@ def main() -> None:
         experimenter_instruction=args.instruction,
         target_resources=args.target_resources,
     )
+    modules, resolved_backend = build_modules(args)
     runner = WorkspaceRunner(
         env_adapter=adapter,
-        modules=[
-            PerceptionModule(),
-            MotorModule(),
-            LanguageReportModule(),
-        ],
+        modules=modules,
         experiment=ExperimentConfig(
             allow_non_workspace_motor_action=args.allow_non_workspace_motor,
+            ignition_threshold=args.ignition_threshold,
+            salience_weight=args.salience_weight,
+            relevance_weight=args.relevance_weight,
+            score_modifiers=parse_score_modifiers(args.score_modifier),
+            workspace_recurrence_bonus=args.workspace_recurrence_bonus,
         ),
         logger=TraceLogger(str(trace_path)),
         run_id=run_id,
@@ -108,9 +158,19 @@ def main() -> None:
     if not args.no_render:
         frame_dir.mkdir(parents=True, exist_ok=True)
         env.render(str(frame_dir / "frame_0000_initial.png"))
+    attach_perception_screenshot(adapter, initial_state, perception_dir)
 
     traces = []
     for cycle_index in range(args.max_cycles):
+        current_state = getattr(runner, "_current_state", None)
+        if current_state is not None:
+            apply_report_query(
+                current_state,
+                cycle_index=cycle_index,
+                every=args.report_query_every,
+                query=args.report_query,
+            )
+            attach_perception_screenshot(adapter, current_state, perception_dir)
         trace = runner.step()
         traces.append(trace)
         if not args.no_render:
@@ -134,6 +194,17 @@ def main() -> None:
         "seed": args.seed,
         "target_resources": args.target_resources,
         "experimenter_instruction": args.instruction,
+        "agent_backend": args.agent_backend,
+        "resolved_agent_backend": resolved_backend,
+        "openai_model": args.openai_model,
+        "openai_vision_model": args.openai_vision_model or args.openai_model,
+        "ignition_threshold": args.ignition_threshold,
+        "salience_weight": args.salience_weight,
+        "relevance_weight": args.relevance_weight,
+        "score_modifiers": parse_score_modifiers(args.score_modifier),
+        "allow_non_workspace_motor_action": args.allow_non_workspace_motor,
+        "motor_execution_threshold": 0.02,
+        "report_query_every": args.report_query_every,
         "cycle_count": len(traces),
         "env_step_count": final_state.timestamp if final_state else None,
         "done": bool(final_state.done) if final_state else False,
@@ -144,6 +215,7 @@ def main() -> None:
         "envelope_path": str(envelope_path),
         "action_stream_path": str(action_path),
         "frame_dir": None if args.no_render else str(frame_dir),
+        "perception_screenshot_dir": str(perception_dir),
         "viewer_path": None,
     }
     summary_path.write_text(
@@ -158,6 +230,51 @@ def main() -> None:
             encoding="utf-8",
         )
     print(json.dumps(summary, indent=2, ensure_ascii=True))
+
+
+def build_modules(args: argparse.Namespace):
+    if args.agent_backend == "heuristic":
+        return [
+            PerceptionModule(),
+            MotorModule(),
+            LanguageReportModule(),
+        ], "heuristic"
+
+    client = build_llm_client(args.agent_backend, default_model=args.openai_model)
+    resolved_backend = getattr(client, "provider_name", client.__class__.__name__)
+    return [
+        LLMPerceptionModule(client=client, model=args.openai_vision_model or args.openai_model),
+        LLMMotorModule(client=client, model=args.openai_model),
+        LLMLanguageModule(client=client, model=args.openai_model),
+    ], resolved_backend
+
+
+def parse_score_modifiers(values):
+    modifiers = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(f"Invalid --score-modifier {value!r}; expected MODULE=FACTOR.")
+        module, factor_text = value.split("=", 1)
+        modifiers[module.strip()] = float(factor_text)
+    return modifiers
+
+
+def attach_perception_screenshot(
+    adapter: ForagingEnvAdapter,
+    state,
+    perception_dir: Path,
+) -> None:
+    perception_dir.mkdir(parents=True, exist_ok=True)
+    env_t = int(getattr(state, "timestamp", 0) or 0)
+    path = perception_dir / f"perception_env_{env_t:04d}.png"
+    adapter.render_screenshot_to_state(state, str(path))
+
+
+def apply_report_query(state, *, cycle_index: int, every: int, query: str) -> None:
+    report_query = query if every > 0 and cycle_index > 0 and cycle_index % every == 0 else None
+    state.info["report_query"] = report_query
+    if isinstance(state.observation, dict):
+        state.observation["report_query"] = report_query
 
 
 if __name__ == "__main__":

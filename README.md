@@ -26,8 +26,10 @@ Qiyuan simulator output
   -> InputRouter builds module-specific ModuleInput
        perception: previous broadcast + global visual map/screenshot
        motor: previous broadcast + nearby obstacle state
-       language: previous broadcast + experimenter instruction
-  -> specialized modules produce one reply / ModuleProposal each
+       language: previous broadcast + current report query; task goal is shared
+  -> LLM-backed specialized modules produce one reply / ModuleProposal each
+       perception can use a multimodal model and the current map screenshot
+       motor/language can use text-only models
   -> fixed deterministic ImportanceScorer
        bottom-up salience = private-input change from previous step
        top-down relevance = similarity(reply, task goal + previous broadcast)
@@ -42,8 +44,10 @@ Qiyuan simulator output
   -> TraceLogger writes JSONL
 ```
 
-The motor route threshold is independent from the workspace ignition threshold,
-so threshold-level / non-workspace actions can be studied separately.
+The optional motor route threshold is independent from the workspace ignition
+threshold, so threshold-level / non-workspace actions can be studied separately.
+It is disabled by default; if the winning workspace broadcast has no
+`action_hint`, the simulator does not step.
 If no proposal crosses the ignition threshold and no old content is still
 maintained, the trace records a `no_ignition` placeholder, but that placeholder
 is not fed back as a real broadcast on the next cycle.
@@ -75,6 +79,17 @@ hashing encoder, install the optional encoder dependency:
 ```bash
 python -m pip install -r requirements-encoder.txt
 ```
+
+To use real OpenAI-backed LLM agents, install the optional LLM dependency and
+set your API key:
+
+```bash
+python -m pip install -r requirements-llm.txt
+export OPENAI_API_KEY=...
+```
+
+Without the optional package/key, the integrated demo uses `mock-llm` through
+the same LLM module interface so traces and the viewer remain runnable.
 
 ## Qiyuan Handoff
 
@@ -121,6 +136,7 @@ else:
 - `src/gwt_agent/core/export.py`: full trace and simulator action export helpers.
 - `src/gwt_agent/core/experiment.py`: ablation/intervention config.
 - `src/gwt_agent/modules/`: perception, motor, language/report modules plus optional outcome-monitor diagnostics.
+- `src/gwt_agent/llm/`: OpenAI Responses and deterministic mock LLM client backends.
 - `src/gwt_agent/envs/mock_env.py`: minimal mock grid only for interface testing.
 - `src/gwt_agent/envs/foraging_adapter.py`: adapter for Qiyuan's foraging env.
 - `unified_trace_action_schema.md`: shared schema for full traces and action replay.
@@ -183,7 +199,23 @@ PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
   --qiyuan-path ../qiyuan_foraging_env \
   --difficulty 1 \
   --seed 7 \
-  --target-resources 1
+  --target-resources 1 \
+  --agent-backend auto
+```
+
+`--agent-backend auto` uses OpenAI when `OPENAI_API_KEY` and the `openai`
+package are available; otherwise it falls back to `mock-llm`. To require a real
+OpenAI call, use:
+
+```bash
+PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 1 \
+  --seed 7 \
+  --target-resources 1 \
+  --agent-backend openai \
+  --openai-model gpt-5.5 \
+  --openai-vision-model gpt-5.5
 ```
 
 This writes full traces, a minimal action stream, rendered frames, and a short
@@ -197,6 +229,12 @@ It also writes a clickable browser viewer:
 
 ```text
 runs/qiyuan_integrated/<run_id>_viewer.html
+```
+
+The perception LLM receives the current map screenshot from:
+
+```text
+runs/qiyuan_integrated/<run_id>_perception_inputs/
 ```
 
 Default action policy is strict workspace action: if the winning broadcast has
@@ -304,16 +342,18 @@ report channel, the recommended first-version modules are:
 
 ```python
 [
-    PerceptionModule(),       # multimodal global map + symbolic state
-    MotorModule(),            # UP/DOWN/LEFT/RIGHT/PICKUP proposal
-    LanguageReportModule(),   # report to the experimenter, not the simulator
+    LLMPerceptionModule(),    # multimodal global map screenshot + symbolic state
+    LLMMotorModule(),         # UP/DOWN/LEFT/RIGHT/PICKUP proposal
+    LLMLanguageModule(),      # report to the experimenter, not the simulator
 ]
 ```
 
-For a pure navigation/control baseline, `PerceptionModule` + `MotorModule` is
-enough. `LanguageReportModule` reads our internal workspace broadcast and acts
-as the system's spokesperson to the experimenter; Qiyuan's current environment
-does not provide language/report/query fields. `OutcomeMonitorModule` is
+For a pure navigation/control baseline, perception + motor is enough.
+`LLMLanguageModule` reads experimenter instructions/report queries and the
+internal workspace broadcast, then acts as the system's spokesperson to the
+experimenter. Qiyuan's current environment does not provide language/report/query
+fields by itself, so `scripts/run_qiyuan_integrated.py` can inject a demo query
+with `--report-query-every N`. `OutcomeMonitorModule` is
 optional for explicit feedback/agency/intervention experiments. We do not
 include a literal emotion module in the first version; if we later need that
 role, it should be a `Value` or `SalienceEvaluation` module.
@@ -360,6 +400,8 @@ else:
 - Test runner: Python standard library `unittest`.
 - Qiyuan simulator integration: requires `pygame`, declared in
   `requirements-foraging.txt` and the optional package extra `.[foraging]`.
+- Real OpenAI-backed LLM agents: requires `openai`, declared in
+  `requirements-llm.txt` and the optional package extra `.[llm]`.
 
 ## License
 

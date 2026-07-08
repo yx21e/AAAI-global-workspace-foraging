@@ -7,7 +7,7 @@ This is the full demo path:
 ```text
 Qiyuan ForagingEnv
   -> ForagingEnvAdapter
-  -> GWT modules: perception / motor / language_report
+  -> GWT LLM modules: multimodal perception / motor / language
   -> fixed importance scoring
   -> workspace ignition or maintained broadcast
   -> ActionResolver
@@ -27,6 +27,16 @@ git clone https://github.com/llll0630/Foraging-Environment-Design.git ../qiyuan_
 python3 -m pip install -r requirements-foraging.txt
 ```
 
+For real OpenAI-backed LLM agents:
+
+```bash
+python3 -m pip install -r requirements-llm.txt
+export OPENAI_API_KEY=...
+```
+
+If this dependency/key is absent, `--agent-backend auto` uses `mock-llm` through
+the same module interface so the clickable demo still runs locally.
+
 ## 2. Run The Integrated System
 
 Use difficulty 1 to explain the minimum closed loop. Use difficulty 2 with the
@@ -38,7 +48,8 @@ PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
   --qiyuan-path ../qiyuan_foraging_env \
   --difficulty 1 \
   --seed 7 \
-  --target-resources 1
+  --target-resources 1 \
+  --agent-backend auto
 ```
 
 Obstacle demo:
@@ -49,7 +60,21 @@ PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
   --difficulty 2 \
   --seed 7 \
   --target-resources 1 \
-  --run-id qiyuan-d2-seed7
+  --run-id qiyuan-d2-seed7 \
+  --agent-backend auto
+```
+
+To force real OpenAI calls instead of the local mock backend:
+
+```bash
+PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 2 \
+  --seed 7 \
+  --target-resources 1 \
+  --agent-backend openai \
+  --openai-model gpt-5.5 \
+  --openai-vision-model gpt-5.5
 ```
 
 Outputs:
@@ -59,6 +84,7 @@ runs/qiyuan_integrated/<run_id>_trace.jsonl       full per-cycle trace
 runs/qiyuan_integrated/<run_id>_envelopes.jsonl   full standardized replay file
 runs/qiyuan_integrated/<run_id>_actions.jsonl     minimal Qiyuan action stream
 runs/qiyuan_integrated/<run_id>_frames/           rendered PNG frames
+runs/qiyuan_integrated/<run_id>_perception_inputs/ current map screenshots for perception
 runs/qiyuan_integrated/<run_id>_viewer.html       clickable browser viewer
 runs/qiyuan_integrated/<run_id>_summary.json      short demo summary
 ```
@@ -110,7 +136,7 @@ command. It should contain:
 Goal: collect exactly one resource and return it to base.
 Constraints: avoid walls; use PICKUP only when standing on the resource.
 Stopping rule: stop once the resource has been delivered to base.
-Reporting role: language_report should summarize the current workspace content
+Reporting role: language should summarize the current workspace content
 for the experimenter, not send actions to the simulator.
 ```
 
@@ -121,15 +147,16 @@ Collect exactly one resource, avoid walls, use PICKUP only when standing on the
 resource, return to base, and stop after the resource is delivered.
 ```
 
-Implementation detail: this instruction is routed both to the language module's
-private input and to `module_input.task_goal`, so the fixed importance scorer's
-top-down relevance term is aligned to the experimenter's current task.
+Implementation detail: this instruction is routed to all modules as
+`module_input.task_goal`, so the fixed importance scorer's top-down relevance
+term is aligned to the experimenter's current task. The language private channel
+is reserved for the current `report_query` event so salience reflects new
+experimenter-facing language input instead of the static task instruction.
 
-The language/report module does not repeat this instruction every timestep. In
-normal navigation cycles it draws from a small fixed report corpus such as
-`Report channel idle; no external query is pending.` This keeps the language
-proposal from winning simply because it restates the task goal. When an explicit
-`report_query` is injected, it switches to a query/report corpus.
+The language module does not send actions to the simulator. In normal navigation
+cycles it produces a low-pressure status/report candidate; when an explicit
+`report_query` is injected, it switches to an outward experimenter-facing answer.
+For demoing language ignition, use `--report-query-every N`.
 
 ## 5. Timestep Definition
 

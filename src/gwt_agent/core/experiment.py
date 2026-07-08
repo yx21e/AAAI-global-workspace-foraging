@@ -19,6 +19,7 @@ class ExperimentConfig:
     ignition_threshold: float = 0.25
     workspace_decay: float = 0.85
     workspace_maintenance_steps: int = 4
+    workspace_recurrence_bonus: float = 0.0
     motor_execution_threshold: float = 0.02
     allow_non_workspace_motor_action: bool = False
     metadata: JsonDict = field(default_factory=dict)

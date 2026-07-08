@@ -139,7 +139,7 @@ For no-movement cognitive timesteps:
   "action_type": "NOOP",
   "direction": null,
   "confidence": 0.6,
-  "source_module": "language_report",
+  "source_module": "language",
   "source_timestamp": 3
 }
 ```
@@ -203,7 +203,8 @@ Boss-aligned default routing:
 ```text
 perception private_observation = global map / screenshot + symbolic global state
 motor private_observation      = nearby obstacles / blocked directions + task state
-language private_observation   = experimenter instruction / report query
+language private_observation   = current report query / report-query active flag
+module_input.task_goal         = persistent experimenter task instruction
 global_broadcast               = previous ignited or maintained workspace content
 ```
 

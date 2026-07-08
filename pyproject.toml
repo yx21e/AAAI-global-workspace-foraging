@@ -26,6 +26,9 @@ foraging = [
 encoder = [
   "sentence-transformers>=3.0"
 ]
+llm = [
+  "openai>=1.93.0"
+]
 dev = []
 
 [tool.setuptools.packages.find]

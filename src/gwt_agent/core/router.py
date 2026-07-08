@@ -112,11 +112,8 @@ class InputRouter:
             }
         if "language" in lower_name or "report" in lower_name:
             return {
-                "experimenter_instruction": env_state.info.get(
-                    "experimenter_instruction",
-                    self.task_goal,
-                ),
                 "report_query": env_state.info.get("report_query"),
+                "report_query_active": bool(env_state.info.get("report_query")),
             }
         return {
             "task_goal": self.task_goal,

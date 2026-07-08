@@ -1,0 +1,2 @@
+# Optional dependency for real OpenAI-backed LLM agents.
+openai>=1.93.0

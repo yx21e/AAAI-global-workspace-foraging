@@ -35,7 +35,7 @@ class AttentionGate:
                 previous_private_input=previous_private_inputs.get(proposal.module_name),
                 last_broadcast=last_broadcast,
             )
-            recurrence_bonus = self._recurrence_bonus(proposal, workspace_state)
+            recurrence_bonus = self._recurrence_bonus(proposal, workspace_state, experiment)
             uptake = importance.importance + recurrence_bonus
             scored.append(
                 ModuleProposal(
@@ -67,10 +67,11 @@ class AttentionGate:
         self,
         proposal: ModuleProposal,
         workspace_state: WorkspaceState,
+        experiment: ExperimentConfig,
     ) -> float:
         active = workspace_state.active_content
         if active is None:
             return 0.0
         if active.winner_module == proposal.module_name:
-            return 0.03
+            return experiment.workspace_recurrence_bonus
         return 0.0
