@@ -159,6 +159,11 @@ For exact visualization replay, use the full envelope file because it contains
 the recorded symbolic map/state at every cognitive cycle. For simulator
 execution replay, use the minimal action stream and call Qiyuan `env.step()`.
 
+Default action policy: if the workspace broadcast has no `action_hint`,
+`should_step=false`; Qiyuan does not receive an action for that cognitive cycle.
+The motor-threshold bypass is optional and should be explicitly enabled for
+reflex/ablation runs.
+
 ## 4. Action Mapping
 
 | Our `EnvAction` | Qiyuan simulator call |
@@ -273,8 +278,9 @@ Route meanings:
 | `action_route` | Meaning |
 |---|---|
 | `workspace_broadcast` | The active workspace broadcast carried an explicit simulator action. |
-| `non_workspace_motor_threshold` | The motor proposal exceeded `motor_execution_threshold` even though it did not need to win workspace ignition. |
-| `no_action_threshold_not_met` | No valid action was requested by broadcast and motor did not cross its execution threshold. |
+| `non_workspace_motor_threshold` | Optional route: motor exceeded `motor_execution_threshold` even though it did not win workspace ignition. |
+| `no_workspace_action` | Default no-action route: the workspace winner had no simulator action hint, so Qiyuan `env.step()` is skipped. |
+| `no_action_threshold_not_met` | Optional bypass was enabled, but motor did not cross its execution threshold. |
 | `forced_action` | Experiment config overrode normal resolution for intervention/debugging. |
 
 ## 5. Code Utilities Already Implemented

@@ -199,6 +199,20 @@ It also writes a clickable browser viewer:
 runs/qiyuan_integrated/<run_id>_viewer.html
 ```
 
+Default action policy is strict workspace action: if the winning broadcast has
+no `action_hint`, the cognitive cycle is logged but Qiyuan `env.step()` is not
+called. The optional motor-threshold bypass is available only when explicitly
+requested:
+
+```bash
+PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 2 \
+  --seed 7 \
+  --target-resources 1 \
+  --allow-non-workspace-motor
+```
+
 For an existing run, rebuild the viewer with:
 
 ```bash

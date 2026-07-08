@@ -103,8 +103,10 @@ class WorkspaceRunnerTest(unittest.TestCase):
             env_adapter=MockGridAdapter(),
             modules=make_modules(),
             experiment=ExperimentConfig(
+                allow_non_workspace_motor_action=True,
                 motor_execution_threshold=0.02,
                 ignition_threshold=0.25,
+                score_modifiers={"language_report": 10.0},
             ),
         )
 
@@ -119,6 +121,25 @@ class WorkspaceRunnerTest(unittest.TestCase):
 
         self.assertTrue(threshold_actions)
         self.assertTrue(all(trace.env_action.should_step for trace in threshold_actions))
+
+    def test_default_no_action_when_workspace_winner_has_no_action(self):
+        runner = WorkspaceRunner(
+            env_adapter=MockGridAdapter(),
+            modules=make_modules(),
+            experiment=ExperimentConfig(
+                score_modifiers={"language_report": 10.0},
+            ),
+        )
+
+        trace = runner.step()
+
+        self.assertEqual(trace.broadcast.winner_module, "language_report")
+        self.assertFalse(trace.env_action.should_step)
+        self.assertIsNone(trace.env_action.command)
+        self.assertEqual(
+            trace.env_action.metadata.get("action_route"),
+            "no_workspace_action",
+        )
 
     def test_module_private_channels_stay_separate_from_broadcast(self):
         runner = WorkspaceRunner(

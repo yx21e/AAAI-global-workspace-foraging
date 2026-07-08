@@ -56,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--no-viewer", action="store_true")
+    parser.add_argument(
+        "--allow-non-workspace-motor",
+        action="store_true",
+        help="Allow the optional motor threshold route even when motor did not win workspace.",
+    )
     return parser.parse_args()
 
 
@@ -90,7 +95,9 @@ def main() -> None:
             MotorModule(),
             LanguageReportModule(),
         ],
-        experiment=ExperimentConfig(),
+        experiment=ExperimentConfig(
+            allow_non_workspace_motor_action=args.allow_non_workspace_motor,
+        ),
         logger=TraceLogger(str(trace_path)),
         run_id=run_id,
         input_router=InputRouter(task_goal=args.instruction),

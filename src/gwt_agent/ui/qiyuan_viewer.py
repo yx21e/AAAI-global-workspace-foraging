@@ -482,6 +482,7 @@ HTML_TEMPLATE = r"""<!doctype html>
           </div>
           <div class="bar"><span style="width:${pct(importance)}%"></span></div>
           <div class="kv">
+            <div class="k">importance</div><div class="v">${importance.toFixed(3)}</div>
             <div class="k">salience</div><div class="v">${Number(row.salience || 0).toFixed(3)}</div>
             <div class="k">relevance</div><div class="v">${Number(row.relevance || 0).toFixed(3)}</div>
             <div class="k">hint</div><div class="v">${text(row.action_hint)}</div>

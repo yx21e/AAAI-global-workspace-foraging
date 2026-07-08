@@ -11,7 +11,9 @@ Qiyuan ForagingEnv
   -> fixed importance scoring
   -> workspace ignition or maintained broadcast
   -> ActionResolver
-  -> Qiyuan env.step(action)
+       default: only active workspace action is executed
+       optional: motor threshold bypass for reflex/ablation runs
+  -> Qiyuan env.step(action) only when EnvAction.should_step=true
   -> full trace + action stream + rendered frames
   -> replay from historical records
 ```
@@ -123,6 +125,12 @@ Implementation detail: this instruction is routed both to the language module's
 private input and to `module_input.task_goal`, so the fixed importance scorer's
 top-down relevance term is aligned to the experimenter's current task.
 
+The language/report module does not repeat this instruction every timestep. In
+normal navigation cycles it draws from a small fixed report corpus such as
+`Report channel idle; no external query is pending.` This keeps the language
+proposal from winning simply because it restates the task goal. When an explicit
+`report_query` is injected, it switches to a query/report corpus.
+
 ## 5. Timestep Definition
 
 Use three indices in the demo:
@@ -136,6 +144,17 @@ Use three indices in the demo:
 If no action is executed, `cycle_t` still advances but `env_t` and the rendered
 agent position can stay unchanged. This is expected: it represents an internal
 cognitive timestep without movement.
+
+Default demo rule:
+
+```text
+workspace winner has action_hint -> send action to Qiyuan env.step()
+workspace winner has no action_hint -> log the cycle, do not update Qiyuan env
+```
+
+The optional `--allow-non-workspace-motor` flag restores the earlier motor
+threshold bypass. That route should be shown as an ablation/reflex condition,
+not as the default GWT action path.
 
 ## 6. Demo Storyboard
 
@@ -151,6 +170,6 @@ For a short group-meeting demo:
    - module-specific inputs;
    - fixed importance scores;
    - workspace broadcast;
-   - action route (`workspace_broadcast` or `non_workspace_motor_threshold`);
+   - action route (`workspace_broadcast` by default);
    - Qiyuan-readable `env_action`.
 6. Run replay and show that historical records regenerate the same visual path.

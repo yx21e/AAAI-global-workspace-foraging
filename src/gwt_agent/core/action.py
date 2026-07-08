@@ -35,35 +35,47 @@ class ActionResolver:
                 route="workspace_broadcast",
             )
 
-        motor_proposals = [
-            proposal
-            for proposal in proposal_list
-            if proposal.action_hint and proposal.module_name.lower().startswith("motor")
-        ]
-        if motor_proposals:
-            best_motor = max(motor_proposals, key=lambda proposal: proposal.importance_score)
-            motor_score = best_motor.uptake_score
-            if motor_score is None:
-                motor_score = best_motor.importance_score
-            if motor_score >= self.config.motor_execution_threshold:
-                return self._from_command(
-                    command=best_motor.action_hint or self.config.no_op_action,
-                    broadcast=broadcast,
-                    source_module=best_motor.module_name,
-                    confidence=best_motor.confidence,
-                    route="non_workspace_motor_threshold",
-                    route_metadata={
-                        "motor_importance": motor_score,
-                        "motor_execution_threshold": self.config.motor_execution_threshold,
-                    },
-                )
+        if self.config.allow_non_workspace_motor_action:
+            motor_proposals = [
+                proposal
+                for proposal in proposal_list
+                if proposal.action_hint and proposal.module_name.lower().startswith("motor")
+            ]
+            if motor_proposals:
+                best_motor = max(motor_proposals, key=lambda proposal: proposal.importance_score)
+                motor_score = best_motor.uptake_score
+                if motor_score is None:
+                    motor_score = best_motor.importance_score
+                if motor_score >= self.config.motor_execution_threshold:
+                    return self._from_command(
+                        command=best_motor.action_hint or self.config.no_op_action,
+                        broadcast=broadcast,
+                        source_module=best_motor.module_name,
+                        confidence=best_motor.confidence,
+                        route="non_workspace_motor_threshold",
+                        route_metadata={
+                            "motor_importance": motor_score,
+                            "motor_execution_threshold": self.config.motor_execution_threshold,
+                            "allow_non_workspace_motor_action": True,
+                        },
+                    )
+
+            return self._from_command(
+                command=self.config.no_op_action,
+                broadcast=broadcast,
+                source_module=broadcast.winner_module,
+                confidence=broadcast.confidence,
+                route="no_action_threshold_not_met",
+                route_metadata={"allow_non_workspace_motor_action": True},
+            )
 
         return self._from_command(
             command=self.config.no_op_action,
             broadcast=broadcast,
             source_module=broadcast.winner_module,
             confidence=broadcast.confidence,
-            route="no_action_threshold_not_met",
+            route="no_workspace_action",
+            route_metadata={"allow_non_workspace_motor_action": False},
         )
 
     def _fallback_from_any_action_hint(

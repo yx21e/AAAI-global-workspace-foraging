@@ -9,7 +9,8 @@
   "workspace_decay": 0.85,
   "workspace_maintenance_steps": 4,
   "motor_execution_threshold": 0.02,
+  "allow_non_workspace_motor_action": false,
   "metadata": {
-    "description": "Default run with perception, motor, and language report modules. Outcome monitor is optional for feedback/intervention experiments."
+    "description": "Default run uses strict workspace action: Qiyuan env.step() is called only when the active broadcast carries an action_hint. Outcome monitor and non-workspace motor action are optional for feedback/intervention experiments."
   }
 }

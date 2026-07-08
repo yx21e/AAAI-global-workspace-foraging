@@ -130,6 +130,8 @@ Current routing:
   - last global broadcast from our own workspace through `global_broadcast`
   - experimenter instruction through its private channel
   - optional report query if we inject one through `env_state.info`
+  - a fixed report corpus so default idle reports do not simply repeat the task
+    prompt every timestep
 
 Important: the current Qiyuan environment does not provide language/report/query
 fields. `LanguageReportModule` is still part of our cognitive/report pipeline
