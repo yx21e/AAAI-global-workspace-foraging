@@ -30,6 +30,8 @@ DEFAULT_INSTRUCTION = (
     "Collect exactly one resource, avoid walls, use PICKUP only when standing "
     "on the resource, return to base, and stop after the resource is delivered."
 )
+DEFAULT_HF_TEXT_MODEL = "Qwen/Qwen3-4B-Instruct-2507"
+DEFAULT_HF_VISION_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 
 
 def default_qiyuan_path(project_root: Path) -> Path:
@@ -54,7 +56,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--instruction", default=DEFAULT_INSTRUCTION)
     parser.add_argument(
         "--agent-backend",
-        choices=["auto", "openai", "mock-llm", "heuristic"],
+        choices=["auto", "openai", "huggingface", "hf", "mock-llm", "heuristic"],
         default="auto",
         help=(
             "Module backend. auto uses OpenAI when OPENAI_API_KEY and the openai "
@@ -70,6 +72,16 @@ def parse_args() -> argparse.Namespace:
         "--openai-vision-model",
         default=os.getenv("OPENAI_VISION_MODEL"),
         help="OpenAI model for multimodal perception. Defaults to --openai-model.",
+    )
+    parser.add_argument(
+        "--hf-model",
+        default=os.getenv("HF_TEXT_MODEL", DEFAULT_HF_TEXT_MODEL),
+        help="HuggingFace text model for motor/language.",
+    )
+    parser.add_argument(
+        "--hf-vision-model",
+        default=os.getenv("HF_VISION_MODEL", DEFAULT_HF_VISION_MODEL),
+        help="HuggingFace multimodal vision model for perception.",
     )
     parser.add_argument("--ignition-threshold", type=float, default=0.25)
     parser.add_argument("--salience-weight", type=float, default=0.55)
@@ -210,6 +222,8 @@ def main() -> None:
         "resolved_agent_backend": resolved_backend,
         "openai_model": args.openai_model,
         "openai_vision_model": args.openai_vision_model or args.openai_model,
+        "hf_model": args.hf_model,
+        "hf_vision_model": args.hf_vision_model,
         "ignition_threshold": args.ignition_threshold,
         "salience_weight": args.salience_weight,
         "relevance_weight": args.relevance_weight,
@@ -253,12 +267,19 @@ def build_modules(args: argparse.Namespace):
             LanguageReportModule(),
         ], "heuristic"
 
-    client = build_llm_client(args.agent_backend, default_model=args.openai_model)
+    if args.agent_backend in {"huggingface", "hf"}:
+        client = build_llm_client(args.agent_backend, default_model=args.hf_model)
+        text_model = args.hf_model
+        vision_model = args.hf_vision_model
+    else:
+        client = build_llm_client(args.agent_backend, default_model=args.openai_model)
+        text_model = args.openai_model
+        vision_model = args.openai_vision_model or args.openai_model
     resolved_backend = getattr(client, "provider_name", client.__class__.__name__)
     return [
-        LLMPerceptionModule(client=client, model=args.openai_vision_model or args.openai_model),
-        LLMMotorModule(client=client, model=args.openai_model),
-        LLMLanguageModule(client=client, model=args.openai_model),
+        LLMPerceptionModule(client=client, model=vision_model),
+        LLMMotorModule(client=client, model=text_model),
+        LLMLanguageModule(client=client, model=text_model),
     ], resolved_backend
 
 

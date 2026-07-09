@@ -6,11 +6,18 @@ from pathlib import Path
 
 from gwt_agent.core.types import EnvironmentState, ModuleInput
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
-from gwt_agent.llm.client import MockLLMClient
+from gwt_agent.llm.client import MockLLMClient, parse_json_object
 from gwt_agent.modules.llm_agents import LLMLanguageModule, LLMMotorModule, LLMPerceptionModule
 
 
 class LLMAgentTest(unittest.TestCase):
+    def test_parse_json_object_from_fenced_output(self):
+        parsed = parse_json_object(
+            '```json\n{"summary":"ok","observations":[],"confidence":0.5,"action_hint":null,"rationale":"done"}\n```'
+        )
+
+        self.assertEqual(parsed["summary"], "ok")
+
     def test_multimodal_perception_uses_screenshot_path(self):
         module = LLMPerceptionModule(client=MockLLMClient())
         module_input = ModuleInput(

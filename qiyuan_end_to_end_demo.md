@@ -37,6 +37,22 @@ export OPENAI_API_KEY=...
 If this dependency/key is absent, `--agent-backend auto` uses `mock-llm` through
 the same module interface so the clickable demo still runs locally.
 
+For downloaded open HuggingFace models:
+
+```bash
+python3 -m pip install -r requirements-hf.txt
+PYTHONPATH=src python3 scripts/download_hf_models.py --cache-dir /tmp/hf_home
+export HF_HOME=/tmp/hf_home
+```
+
+Default HF model assignment:
+
+```text
+perception: Qwen/Qwen3-VL-8B-Instruct
+motor:      Qwen/Qwen3-4B-Instruct-2507
+language:   Qwen/Qwen3-4B-Instruct-2507
+```
+
 ## 2. Run The Integrated System
 
 Use difficulty 1 to explain the minimum closed loop. Use difficulty 2 with the
@@ -75,6 +91,20 @@ PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
   --agent-backend openai \
   --openai-model gpt-5.5 \
   --openai-vision-model gpt-5.5
+```
+
+To run local HuggingFace models instead:
+
+```bash
+export HF_HOME=/tmp/hf_home
+PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 2 \
+  --seed 7 \
+  --target-resources 1 \
+  --agent-backend huggingface \
+  --hf-vision-model Qwen/Qwen3-VL-8B-Instruct \
+  --hf-model Qwen/Qwen3-4B-Instruct-2507
 ```
 
 Outputs:

@@ -79,6 +79,19 @@ Recommended first-version module list:
 ]
 ```
 
+Default open-model assignment:
+
+```text
+LLMPerceptionModule -> Qwen/Qwen3-VL-8B-Instruct
+LLMMotorModule      -> Qwen/Qwen3-4B-Instruct-2507
+LLMLanguageModule   -> Qwen/Qwen3-4B-Instruct-2507
+```
+
+Rationale: perception needs a multimodal VL model for the map screenshot; motor
+and language need reliable instruction following, JSON-style structured output,
+and bilingual prompt handling. Using Qwen for all three keeps tokenizer/chat
+template behavior consistent.
+
 Minimal control-only baseline:
 
 ```python

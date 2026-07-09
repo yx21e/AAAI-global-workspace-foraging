@@ -286,6 +286,183 @@ class OpenAIResponsesClient:
         return parsed
 
 
+class HuggingFaceTransformersClient:
+    """Local HuggingFace Transformers backend for downloaded open models."""
+
+    provider_name = "huggingface-transformers"
+
+    def __init__(
+        self,
+        *,
+        default_model: str = "Qwen/Qwen3-4B-Instruct-2507",
+        cache_dir: Optional[str] = None,
+        max_new_tokens: int = 700,
+    ) -> None:
+        if importlib.util.find_spec("torch") is None:
+            raise LLMClientError(
+                "torch is not installed. Install requirements-hf.txt or use "
+                "--agent-backend mock-llm."
+            )
+        if importlib.util.find_spec("transformers") is None:
+            raise LLMClientError(
+                "transformers is not installed. Install requirements-hf.txt or use "
+                "--agent-backend mock-llm."
+            )
+        self.default_model = default_model
+        self.cache_dir = cache_dir or os.getenv("HF_HOME") or os.getenv("TRANSFORMERS_CACHE")
+        self.max_new_tokens = max_new_tokens
+        self._loaded = {}
+
+    @staticmethod
+    def available() -> bool:
+        return (
+            importlib.util.find_spec("torch") is not None
+            and importlib.util.find_spec("transformers") is not None
+        )
+
+    def complete_json(
+        self,
+        *,
+        system_prompt: str,
+        user_payload: JsonDict,
+        response_schema: JsonDict,
+        image_path: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> JsonDict:
+        model_id = model or self.default_model
+        prompt = json.dumps(
+            {
+                "payload": user_payload,
+                "response_schema": response_schema,
+                "instruction": "Return one JSON object only. Do not include markdown.",
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+        )
+        if image_path:
+            output = self._generate_vision(
+                model_id=model_id,
+                system_prompt=system_prompt,
+                prompt=prompt,
+                image_path=image_path,
+            )
+        else:
+            output = self._generate_text(
+                model_id=model_id,
+                system_prompt=system_prompt,
+                prompt=prompt,
+            )
+        return parse_json_object(output)
+
+    def _generate_text(
+        self,
+        *,
+        model_id: str,
+        system_prompt: str,
+        prompt: str,
+    ) -> str:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        key = ("text", model_id)
+        if key not in self._loaded:
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_id,
+                cache_dir=self.cache_dir,
+                trust_remote_code=True,
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                cache_dir=self.cache_dir,
+                device_map="auto",
+                torch_dtype="auto",
+                trust_remote_code=True,
+            )
+            self._loaded[key] = (model, tokenizer)
+        model, tokenizer = self._loaded[key]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        inputs = tokenizer([text], return_tensors="pt")
+        device = next(model.parameters()).device
+        inputs = {name: value.to(device) for name, value in inputs.items()}
+        with torch.no_grad():
+            generated = model.generate(
+                **inputs,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=False,
+            )
+        output_ids = generated[0][inputs["input_ids"].shape[-1] :]
+        return tokenizer.decode(output_ids, skip_special_tokens=True)
+
+    def _generate_vision(
+        self,
+        *,
+        model_id: str,
+        system_prompt: str,
+        prompt: str,
+        image_path: str,
+    ) -> str:
+        import torch
+        from PIL import Image
+        from transformers import AutoProcessor
+
+        key = ("vision", model_id)
+        if key not in self._loaded:
+            model_cls = image_text_model_class()
+            processor = AutoProcessor.from_pretrained(
+                model_id,
+                cache_dir=self.cache_dir,
+                trust_remote_code=True,
+            )
+            model = model_cls.from_pretrained(
+                model_id,
+                cache_dir=self.cache_dir,
+                device_map="auto",
+                torch_dtype="auto",
+                trust_remote_code=True,
+            )
+            self._loaded[key] = (model, processor)
+        model, processor = self._loaded[key]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image_path},
+                    {"type": "text", "text": prompt},
+                ],
+            },
+        ]
+        text = processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
+        image = Image.open(image_path).convert("RGB")
+        inputs = processor(
+            text=[text],
+            images=[image],
+            return_tensors="pt",
+        )
+        device = next(model.parameters()).device
+        inputs = {name: value.to(device) for name, value in inputs.items()}
+        with torch.no_grad():
+            generated = model.generate(
+                **inputs,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=False,
+            )
+        output_ids = generated[0][inputs["input_ids"].shape[-1] :]
+        return processor.decode(output_ids, skip_special_tokens=True)
+
+
 def build_llm_client(
     backend: str,
     *,
@@ -296,16 +473,81 @@ def build_llm_client(
         return MockLLMClient()
     if normalized == "openai":
         return OpenAIResponsesClient(default_model=default_model)
+    if normalized in {"hf", "huggingface"}:
+        return HuggingFaceTransformersClient(default_model=default_model)
     if normalized == "auto":
         if OpenAIResponsesClient.available():
             return OpenAIResponsesClient(default_model=default_model)
         return MockLLMClient(provider_name="mock-llm-auto")
-    raise ValueError(f"Unsupported LLM backend {backend!r}. Use auto, openai, or mock-llm.")
+    raise ValueError(
+        f"Unsupported LLM backend {backend!r}. Use auto, openai, huggingface, or mock-llm."
+    )
+
+
+def image_text_model_class():
+    import transformers
+
+    for name in (
+        "AutoModelForImageTextToText",
+        "AutoModelForVision2Seq",
+        "Qwen3VLForConditionalGeneration",
+        "Qwen2_5_VLForConditionalGeneration",
+    ):
+        model_cls = getattr(transformers, name, None)
+        if model_cls is not None:
+            return model_cls
+    raise LLMClientError(
+        "This transformers version does not expose an image-text model class. "
+        "Install a newer transformers release from requirements-hf.txt."
+    )
 
 
 def private_observation(user_payload: JsonDict) -> JsonDict:
     value = user_payload.get("private_observation") or {}
     return value if isinstance(value, dict) else {}
+
+
+def parse_json_object(text: str) -> JsonDict:
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.strip("`")
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].strip()
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        parsed = json.loads(extract_json_object(cleaned))
+    if not isinstance(parsed, dict):
+        raise LLMClientError(f"Expected a JSON object, got {type(parsed).__name__}: {text!r}")
+    return parsed
+
+
+def extract_json_object(text: str) -> str:
+    start = text.find("{")
+    if start < 0:
+        raise LLMClientError(f"No JSON object found in model output: {text!r}")
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    raise LLMClientError(f"Unclosed JSON object in model output: {text!r}")
 
 
 def tuple_or_none(value) -> Optional[tuple]:

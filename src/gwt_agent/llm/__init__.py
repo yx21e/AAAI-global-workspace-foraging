@@ -3,6 +3,7 @@
 from gwt_agent.llm.client import (
     LLMClient,
     LLMClientError,
+    HuggingFaceTransformersClient,
     MockLLMClient,
     OpenAIResponsesClient,
     build_llm_client,
@@ -11,6 +12,7 @@ from gwt_agent.llm.client import (
 __all__ = [
     "LLMClient",
     "LLMClientError",
+    "HuggingFaceTransformersClient",
     "MockLLMClient",
     "OpenAIResponsesClient",
     "build_llm_client",

@@ -91,6 +91,31 @@ export OPENAI_API_KEY=...
 Without the optional package/key, the integrated demo uses `mock-llm` through
 the same LLM module interface so traces and the viewer remain runnable.
 
+To use downloaded open HuggingFace models locally, install the optional
+Transformers stack:
+
+```bash
+python -m pip install -r requirements-hf.txt
+```
+
+Default HuggingFace model choices:
+
+```text
+perception: Qwen/Qwen3-VL-8B-Instruct
+motor:      Qwen/Qwen3-4B-Instruct-2507
+language:   Qwen/Qwen3-4B-Instruct-2507
+```
+
+Download them into a cache with:
+
+```bash
+PYTHONPATH=src python scripts/download_hf_models.py --cache-dir /tmp/hf_home
+export HF_HOME=/tmp/hf_home
+```
+
+The current CPU-only login environment can download these models, but local
+inference is expected to be slow without a GPU.
+
 ## Qiyuan Handoff
 
 For simulator integration, Qiyuan can start from:
@@ -216,6 +241,20 @@ PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
   --agent-backend openai \
   --openai-model gpt-5.5 \
   --openai-vision-model gpt-5.5
+```
+
+To run the open HuggingFace model stack:
+
+```bash
+export HF_HOME=/tmp/hf_home
+PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 2 \
+  --seed 7 \
+  --target-resources 1 \
+  --agent-backend huggingface \
+  --hf-vision-model Qwen/Qwen3-VL-8B-Instruct \
+  --hf-model Qwen/Qwen3-4B-Instruct-2507
 ```
 
 This writes full traces, a minimal action stream, rendered frames, and a short
@@ -424,6 +463,9 @@ else:
   `requirements-foraging.txt` and the optional package extra `.[foraging]`.
 - Real OpenAI-backed LLM agents: requires `openai`, declared in
   `requirements-llm.txt` and the optional package extra `.[llm]`.
+- Local HuggingFace open-model agents: requires `torch`, `transformers`,
+  `accelerate`, and `pillow`, declared in `requirements-hf.txt` and the optional
+  package extra `.[hf]`.
 
 ## License
 
