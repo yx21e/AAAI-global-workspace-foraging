@@ -1,6 +1,7 @@
 # Optional dependencies for local HuggingFace open-model agents.
 # Qwen3-VL support may require a recent Transformers release.
 torch>=2.6
+torchvision>=0.21
 transformers>=4.57.0
 accelerate>=1.0
 pillow>=10.0

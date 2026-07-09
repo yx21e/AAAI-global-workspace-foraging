@@ -109,8 +109,9 @@ language:   Qwen/Qwen3-4B-Instruct-2507
 Download them into a cache with:
 
 ```bash
-PYTHONPATH=src python scripts/download_hf_models.py --cache-dir /tmp/hf_home
-export HF_HOME=/tmp/hf_home
+PYTHONPATH=src python scripts/download_hf_models.py \
+  --cache-dir /orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
+export HF_HOME=/orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
 ```
 
 The current CPU-only login environment can download these models, but local
@@ -246,7 +247,7 @@ PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
 To run the open HuggingFace model stack:
 
 ```bash
-export HF_HOME=/tmp/hf_home
+export HF_HOME=/orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
 PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
   --qiyuan-path ../qiyuan_foraging_env \
   --difficulty 2 \
@@ -463,9 +464,9 @@ else:
   `requirements-foraging.txt` and the optional package extra `.[foraging]`.
 - Real OpenAI-backed LLM agents: requires `openai`, declared in
   `requirements-llm.txt` and the optional package extra `.[llm]`.
-- Local HuggingFace open-model agents: requires `torch`, `transformers`,
-  `accelerate`, and `pillow`, declared in `requirements-hf.txt` and the optional
-  package extra `.[hf]`.
+- Local HuggingFace open-model agents: requires `torch`, `torchvision`,
+  `transformers`, `accelerate`, and `pillow`, declared in `requirements-hf.txt`
+  and the optional package extra `.[hf]`.
 
 ## License
 
