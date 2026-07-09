@@ -390,6 +390,61 @@ HTML_TEMPLATE = r"""<!doctype html>
       line-height: 1.45;
       white-space: pre-wrap;
     }
+    .prompt-grid {
+      display: grid;
+      gap: 8px;
+    }
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+    input[type="number"],
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+    }
+    input[type="number"] {
+      height: 34px;
+      padding: 6px 8px;
+    }
+    textarea {
+      min-height: 82px;
+      resize: vertical;
+      padding: 8px;
+      line-height: 1.35;
+    }
+    .prompt-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .command {
+      margin: 0;
+      max-height: 110px;
+      overflow: auto;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f7f8f6;
+      color: #27313c;
+      font-size: 11px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+    }
     .module-output {
       margin-top: 2px;
       padding-top: 6px;
@@ -464,6 +519,21 @@ HTML_TEMPLATE = r"""<!doctype html>
         <h2>Language</h2>
         <p class="report" id="reportPanel"></p>
       </div>
+      <div class="section">
+        <h2>Experimenter</h2>
+        <div class="prompt-grid">
+          <label for="promptCycle">Cycle</label>
+          <input id="promptCycle" type="number" min="0" step="1" value="0">
+          <label for="experimenterPrompt">Prompt</label>
+          <textarea id="experimenterPrompt"></textarea>
+          <div class="prompt-actions">
+            <button id="sendPromptBtn" class="wide" title="Rerun with this language prompt">Run</button>
+            <button id="copyCommandBtn" class="wide" title="Copy rerun command">Copy</button>
+          </div>
+          <pre class="command" id="rerunCommand"></pre>
+          <div class="status" id="promptStatus"></div>
+        </div>
+      </div>
     </aside>
   </main>
   <script>
@@ -472,6 +542,12 @@ HTML_TEMPLATE = r"""<!doctype html>
     const scrubber = document.getElementById('scrubber');
     const playBtn = document.getElementById('playBtn');
     const pickupBtn = document.getElementById('pickupBtn');
+    const promptCycle = document.getElementById('promptCycle');
+    const experimenterPrompt = document.getElementById('experimenterPrompt');
+    const sendPromptBtn = document.getElementById('sendPromptBtn');
+    const copyCommandBtn = document.getElementById('copyCommandBtn');
+    const rerunCommand = document.getElementById('rerunCommand');
+    const promptStatus = document.getElementById('promptStatus');
     let index = 0;
     let timer = null;
 
@@ -554,6 +630,10 @@ HTML_TEMPLATE = r"""<!doctype html>
       ]);
       renderModules(step);
       document.getElementById('reportPanel').textContent = step.language_report || '-';
+      if (document.activeElement !== promptCycle) {
+        promptCycle.value = step.cycle_t === null || step.cycle_t === undefined ? 0 : step.cycle_t;
+      }
+      refreshRerunCommand();
     }
 
     function setIndex(next) {
@@ -587,6 +667,112 @@ HTML_TEMPLATE = r"""<!doctype html>
       return found >= 0 ? found : data.frames.length - 1;
     }
 
+    function shellQuote(value) {
+      const textValue = text(value);
+      return "'" + textValue.replace(/'/g, "'\\''") + "'";
+    }
+
+    function argPair(args, flag, value) {
+      if (value === null || value === undefined || value === '') return;
+      args.push(flag, shellQuote(value));
+    }
+
+    function buildRerunCommand() {
+      const summary = data.summary || {};
+      const cycle = Number(promptCycle.value || 0);
+      const prompt = experimenterPrompt.value || '';
+      const root = summary.project_root || '.';
+      const args = ['python3', 'scripts/run_qiyuan_integrated.py'];
+      argPair(args, '--qiyuan-path', summary.qiyuan_path);
+      argPair(args, '--difficulty', summary.difficulty);
+      argPair(args, '--seed', summary.seed);
+      argPair(args, '--target-resources', summary.target_resources);
+      argPair(args, '--max-cycles', summary.max_cycles || Math.max(summary.cycle_count || 0, 1));
+      argPair(args, '--run-id', `${summary.run_id || 'run'}-prompt-c${cycle}`);
+      argPair(args, '--out-dir', summary.out_dir);
+      argPair(args, '--instruction', summary.experimenter_instruction);
+      argPair(args, '--agent-backend', summary.agent_backend || summary.resolved_agent_backend || 'mock-llm');
+      argPair(args, '--openai-model', summary.openai_model);
+      argPair(args, '--openai-vision-model', summary.openai_vision_model);
+      argPair(args, '--hf-model', summary.hf_model);
+      argPair(args, '--hf-vision-model', summary.hf_vision_model);
+      argPair(args, '--ignition-threshold', summary.ignition_threshold);
+      argPair(args, '--salience-weight', summary.salience_weight);
+      argPair(args, '--relevance-weight', summary.relevance_weight);
+      argPair(args, '--workspace-recurrence-bonus', summary.workspace_recurrence_bonus);
+      argPair(args, '--report-query-every', summary.report_query_every || 0);
+      argPair(args, '--report-query', summary.report_query);
+      const modifiers = summary.score_modifiers || {};
+      Object.keys(modifiers).sort().forEach(key => {
+        argPair(args, '--score-modifier', `${key}=${modifiers[key]}`);
+      });
+      const pauses = Object.assign({}, summary.language_pause_cycles || {});
+      if (prompt.trim()) {
+        pauses[String(cycle)] = prompt;
+      }
+      Object.keys(pauses).sort((a, b) => Number(a) - Number(b)).forEach(key => {
+        argPair(args, '--pause-language-at', `${key}=${pauses[key]}`);
+      });
+      if (summary.allow_non_workspace_motor_action) {
+        args.push('--allow-non-workspace-motor');
+      }
+      return `cd ${shellQuote(root)} && PYTHONPATH=src ${args.join(' ')}`;
+    }
+
+    function refreshRerunCommand() {
+      rerunCommand.textContent = buildRerunCommand();
+    }
+
+    function canUsePromptServer() {
+      return window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    }
+
+    async function submitPrompt() {
+      const prompt = experimenterPrompt.value.trim();
+      if (!prompt) {
+        promptStatus.textContent = 'Prompt is empty.';
+        return;
+      }
+      refreshRerunCommand();
+      if (!canUsePromptServer()) {
+        promptStatus.textContent = 'Open this viewer through scripts/serve_qiyuan_viewer.py to run from the button.';
+        return;
+      }
+      sendPromptBtn.disabled = true;
+      promptStatus.textContent = 'Running...';
+      try {
+        const response = await fetch('/api/rerun', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            run_id: data.summary.run_id,
+            cycle: Number(promptCycle.value || 0),
+            prompt,
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || `HTTP ${response.status}`);
+        }
+        promptStatus.textContent = `Created ${result.run_id}`;
+        window.location.href = result.viewer_url;
+      } catch (error) {
+        promptStatus.textContent = String(error.message || error);
+        sendPromptBtn.disabled = false;
+      }
+    }
+
+    async function copyCommand() {
+      refreshRerunCommand();
+      const command = rerunCommand.textContent;
+      try {
+        await navigator.clipboard.writeText(command);
+        promptStatus.textContent = 'Command copied.';
+      } catch (error) {
+        promptStatus.textContent = command;
+      }
+    }
+
     document.getElementById('title').textContent = data.summary.run_id || 'Qiyuan GWT Demo';
     document.getElementById('donePill').innerHTML = data.summary.done ? '<span class="ok">done</span>' : '<span class="bad">not done</span>';
     document.getElementById('cyclePill').textContent = `cycles ${data.summary.cycle_count}`;
@@ -600,6 +786,10 @@ HTML_TEMPLATE = r"""<!doctype html>
     document.getElementById('nextBtn').addEventListener('click', () => setIndex(index + 1));
     document.getElementById('lastBtn').addEventListener('click', () => setIndex(data.frames.length - 1));
     pickupBtn.addEventListener('click', () => setIndex(pickupIndex()));
+    promptCycle.addEventListener('input', refreshRerunCommand);
+    experimenterPrompt.addEventListener('input', refreshRerunCommand);
+    sendPromptBtn.addEventListener('click', submitPrompt);
+    copyCommandBtn.addEventListener('click', copyCommand);
     window.addEventListener('keydown', event => {
       if (event.key === 'ArrowLeft') setIndex(index - 1);
       if (event.key === 'ArrowRight') setIndex(index + 1);

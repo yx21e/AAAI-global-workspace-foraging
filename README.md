@@ -299,6 +299,24 @@ The clickable viewer's right sidebar shows each module's output language at the
 bottom of its module card, and the Workspace panel shows the winning module's
 output language for that cycle.
 
+To use the viewer as a local experimenter prompt window, serve an existing run:
+
+```bash
+PYTHONPATH=src:. python scripts/serve_qiyuan_viewer.py \
+  --run-id <run_id>
+```
+
+Then open the printed local URL. The Experimenter panel can choose a cycle,
+send a prompt to the language agent, rerun with the same run settings, and jump
+to the newly generated viewer. For HuggingFace-backed runs, start the server
+with the same Python environment used for HF inference, for example:
+
+```bash
+PYTHONPATH=src:. /orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_env/bin/python \
+  scripts/serve_qiyuan_viewer.py \
+  --run-id <run_id>
+```
+
 Default action policy is strict workspace action: if the winning broadcast has
 no `action_hint`, the cognitive cycle is logged but Qiyuan `env.step()` is not
 called. The optional motor-threshold bypass is available only when explicitly

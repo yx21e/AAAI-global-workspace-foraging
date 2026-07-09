@@ -132,6 +132,17 @@ module scores. The right sidebar also prints each module's output language at
 the bottom of its module card, and the Workspace panel prints the winning
 module's output language.
 
+For an interactive experimenter prompt window, serve the same run:
+
+```bash
+PYTHONPATH=src:. python3 scripts/serve_qiyuan_viewer.py \
+  --run-id qiyuan-d2-seed7
+```
+
+The browser Experimenter panel submits a cycle-indexed prompt, the server reruns
+the integrated demo with `--pause-language-at`, and the browser opens the new
+viewer generated from that prompt-conditioned run.
+
 ## 3. Replay From Historical Records
 
 Exact trace replay:

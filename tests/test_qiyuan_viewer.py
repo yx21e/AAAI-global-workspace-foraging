@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.serve_qiyuan_viewer import ServerConfig, build_rerun_command
 from gwt_agent.ui.qiyuan_viewer import build_viewer
 
 
@@ -93,6 +94,45 @@ class QiyuanViewerTest(unittest.TestCase):
             self.assertIn("PICKUP", html)
             self.assertIn("Motor chose PICKUP", html)
             self.assertIn("Motor output language appears here.", html)
+            self.assertIn("Experimenter", html)
+            self.assertIn("sendPromptBtn", html)
+
+    def test_prompt_rerun_command_preserves_run_settings(self):
+        config = ServerConfig(
+            run_id="viewer-test",
+            run_dir=Path("/tmp/gwt-runs"),
+            python_executable="python3",
+            rerun_timeout=30,
+            max_cycles=12,
+        )
+        summary = {
+            "qiyuan_path": "/tmp/qiyuan",
+            "difficulty": 2,
+            "seed": 7,
+            "target_resources": 1,
+            "experimenter_instruction": "collect one resource",
+            "agent_backend": "mock-llm",
+            "ignition_threshold": 0.25,
+            "salience_weight": 0.55,
+            "relevance_weight": 0.45,
+            "language_pause_cycles": {"2": "earlier prompt"},
+            "allow_non_workspace_motor_action": True,
+        }
+
+        command = build_rerun_command(
+            config=config,
+            summary=summary,
+            new_run_id="viewer-test-prompt-c4",
+            cycle=4,
+            prompt="What did you hear?",
+        )
+
+        self.assertIn("--out-dir", command)
+        self.assertIn("/tmp/gwt-runs", command)
+        self.assertIn("--pause-language-at", command)
+        self.assertIn("2=earlier prompt", command)
+        self.assertIn("4=What did you hear?", command)
+        self.assertIn("--allow-non-workspace-motor", command)
 
 
 if __name__ == "__main__":
