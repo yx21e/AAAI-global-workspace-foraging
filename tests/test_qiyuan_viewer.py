@@ -55,9 +55,26 @@ class QiyuanViewerTest(unittest.TestCase):
                 },
                 "workspace_broadcast": {
                     "winner_module": "motor",
+                    "content": {
+                        "summary": "Motor chose PICKUP after hearing the workspace.",
+                    },
                     "metadata": {"workspace": {"ignited": True}},
                 },
-                "module_states": [],
+                "module_states": [
+                    {
+                        "module_name": "motor",
+                        "status": "proposed",
+                        "proposal": {
+                            "importance_score": 0.9,
+                            "salience_score": 0.5,
+                            "goal_relevance_score": 0.8,
+                            "action_hint": "PICKUP",
+                            "content": {
+                                "summary": "Motor output language appears here.",
+                            },
+                        },
+                    }
+                ],
             }
             (root / f"{run_id}_envelopes.jsonl").write_text(
                 json.dumps(envelope) + "\n",
@@ -74,6 +91,8 @@ class QiyuanViewerTest(unittest.TestCase):
             self.assertIn(run_id, html)
             self.assertIn("frame_0000_initial.png", html)
             self.assertIn("PICKUP", html)
+            self.assertIn("Motor chose PICKUP", html)
+            self.assertIn("Motor output language appears here.", html)
 
 
 if __name__ == "__main__":

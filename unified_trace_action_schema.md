@@ -203,7 +203,8 @@ Boss-aligned default routing:
 ```text
 perception private_observation = global map / screenshot + symbolic global state
 motor private_observation      = nearby obstacles / blocked directions + task state
-language private_observation   = current report query / report-query active flag
+language private_observation   = current report query or user-pause prompt
+language private_state/history = recent language input/output history
 module_input.task_goal         = persistent experimenter task instruction
 global_broadcast               = previous ignited or maintained workspace content
 ```

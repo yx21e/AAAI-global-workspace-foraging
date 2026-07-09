@@ -98,7 +98,9 @@ PYTHONPATH=src python3 scripts/build_qiyuan_viewer.py \
 
 Open the generated `*_viewer.html` in a browser. The viewer has frame stepping,
 play/pause, a timeline slider, a PICKUP jump, action route, workspace state, and
-module scores.
+module scores. The right sidebar also prints each module's output language at
+the bottom of its module card, and the Workspace panel prints the winning
+module's output language.
 
 ## 3. Replay From Historical Records
 
@@ -157,6 +159,21 @@ The language module does not send actions to the simulator. In normal navigation
 cycles it produces a low-pressure status/report candidate; when an explicit
 `report_query` is injected, it switches to an outward experimenter-facing answer.
 For demoing language ignition, use `--report-query-every N`.
+
+For a user-controlled pause, pass a cycle-indexed prompt:
+
+```bash
+PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 2 \
+  --seed 7 \
+  --target-resources 1 \
+  --pause-language-at "8=What did you just hear from the workspace?"
+```
+
+At that cycle, the language module receives the previous broadcast, the user
+prompt, and its own recent language input/output history. It still does not
+send an action to the simulator.
 
 ## 5. Timestep Definition
 

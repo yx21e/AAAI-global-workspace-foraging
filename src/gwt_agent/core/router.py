@@ -111,9 +111,21 @@ class InputRouter:
                 "step_count": state.get("step_count"),
             }
         if "language" in lower_name or "report" in lower_name:
+            pause_requested = bool(env_state.info.get("language_pause_requested"))
+            user_prompt = env_state.info.get("language_user_prompt")
+            report_query = env_state.info.get("report_query")
             return {
-                "report_query": env_state.info.get("report_query"),
-                "report_query_active": bool(env_state.info.get("report_query")),
+                "interaction_mode": (
+                    "user_pause"
+                    if pause_requested
+                    else "report_query"
+                    if report_query
+                    else "broadcast_listening"
+                ),
+                "pause_requested": pause_requested,
+                "user_prompt": user_prompt,
+                "report_query": report_query,
+                "report_query_active": bool(report_query),
             }
         return {
             "task_goal": self.task_goal,
@@ -129,7 +141,7 @@ class InputRouter:
         if "outcome" in lower_name or "monitor" in lower_name:
             return "outcome_feedback_input"
         if "language" in lower_name or "report" in lower_name:
-            return "experimenter_instruction_private_input"
+            return "broadcast_plus_language_event_input"
         return "broadcast_plus_private_state"
 
 

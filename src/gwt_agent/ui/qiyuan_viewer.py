@@ -91,6 +91,7 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
             "action_type": "INITIAL",
             "route": "initial_state",
             "workspace_winner": None,
+            "workspace_output_language": None,
             "workspace_ignited": None,
             "workspace_maintained": None,
             "agent_position": get_symbolic(envelopes[0], before=True).get("agent_position")
@@ -115,15 +116,16 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
         action_metadata = action.get("metadata", {})
         broadcast = envelope.get("workspace_broadcast", {})
         workspace = broadcast.get("metadata", {}).get("workspace", {})
+        workspace_output_language = proposal_language({"content": broadcast.get("content")})
         symbolic = get_symbolic(envelope, before=False)
         modules = []
         language_report = None
         for state in envelope.get("module_states", []):
             proposal = state.get("proposal") or {}
             module_name = state.get("module_name")
+            output_language = proposal_language(proposal)
             if module_name in {"language_report", "language"}:
-                content = proposal.get("content") or {}
-                language_report = content.get("verbal_report") or content.get("summary")
+                language_report = output_language
             modules.append(
                 {
                     "module": module_name,
@@ -132,6 +134,7 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
                     "salience": proposal.get("salience_score"),
                     "relevance": proposal.get("goal_relevance_score"),
                     "action_hint": proposal.get("action_hint"),
+                    "output_language": output_language,
                 }
             )
         steps.append(
@@ -144,6 +147,7 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
                 "action_type": action.get("action_type"),
                 "route": action_metadata.get("action_route"),
                 "workspace_winner": broadcast.get("winner_module"),
+                "workspace_output_language": workspace_output_language,
                 "workspace_ignited": workspace.get("ignited"),
                 "workspace_maintained": workspace.get("maintained"),
                 "agent_position": symbolic.get("agent_position"),
@@ -162,6 +166,20 @@ def get_symbolic(envelope: dict, *, before: bool) -> dict:
     state_key = "env_state" if before else "next_env_state"
     state = envelope.get(state_key) or envelope.get("env_state") or {}
     return state.get("symbolic_state") or {}
+
+
+def proposal_language(proposal: dict) -> str:
+    content = proposal.get("content")
+    if isinstance(content, dict):
+        for key in ("verbal_report", "summary", "salient_event", "planned_action", "goal"):
+            value = content.get(key)
+            if value:
+                return str(value)
+        if content:
+            return json.dumps(content, ensure_ascii=True, sort_keys=True)
+    if content is None:
+        return ""
+    return str(content)
 
 
 def render_html(payload: dict) -> str:
@@ -372,6 +390,15 @@ HTML_TEMPLATE = r"""<!doctype html>
       line-height: 1.45;
       white-space: pre-wrap;
     }
+    .module-output {
+      margin-top: 2px;
+      padding-top: 6px;
+      border-top: 1px solid var(--line);
+      color: #27313c;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
     @media (max-width: 920px) {
       header {
         align-items: flex-start;
@@ -454,9 +481,19 @@ HTML_TEMPLATE = r"""<!doctype html>
       return String(value);
     }
 
+    function html(value) {
+      return text(value).replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[ch]);
+    }
+
     function kv(container, rows) {
       container.innerHTML = rows.map(([k, v, cls]) => (
-        `<div class="k">${k}</div><div class="v ${cls || ''}">${text(v)}</div>`
+        `<div class="k">${html(k)}</div><div class="v ${cls || ''}">${html(v)}</div>`
       )).join('');
     }
 
@@ -477,7 +514,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         const importance = Number(row.importance || 0);
         return `<div class="module-row">
           <div class="module-top">
-            <span>${text(row.module)}</span>
+            <span>${html(row.module)}</span>
             <span>${importance.toFixed(3)}</span>
           </div>
           <div class="bar"><span style="width:${pct(importance)}%"></span></div>
@@ -485,8 +522,9 @@ HTML_TEMPLATE = r"""<!doctype html>
             <div class="k">importance</div><div class="v">${importance.toFixed(3)}</div>
             <div class="k">salience</div><div class="v">${Number(row.salience || 0).toFixed(3)}</div>
             <div class="k">relevance</div><div class="v">${Number(row.relevance || 0).toFixed(3)}</div>
-            <div class="k">hint</div><div class="v">${text(row.action_hint)}</div>
+            <div class="k">hint</div><div class="v">${html(row.action_hint)}</div>
           </div>
+          <div class="module-output">${html(row.output_language)}</div>
         </div>`;
       }).join('');
     }
@@ -510,6 +548,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       ]);
       kv(document.getElementById('workspacePanel'), [
         ['winner', step.workspace_winner],
+        ['winner output', step.workspace_output_language],
         ['ignited', step.workspace_ignited],
         ['maintained', step.workspace_maintained],
       ]);

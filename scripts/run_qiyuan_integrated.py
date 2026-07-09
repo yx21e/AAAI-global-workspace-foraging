@@ -98,6 +98,16 @@ def parse_args() -> argparse.Namespace:
         default="Please summarize the currently active workspace broadcast.",
     )
     parser.add_argument(
+        "--pause-language-at",
+        action="append",
+        default=[],
+        metavar="CYCLE=TEXT",
+        help=(
+            "Pause at a cognitive cycle and send TEXT to the language agent. "
+            "Repeatable, e.g. --pause-language-at '8=What are you hearing?'"
+        ),
+    )
+    parser.add_argument(
         "--out-dir",
         default=str(project_root / "runs" / "qiyuan_integrated"),
     )
@@ -117,6 +127,7 @@ def main() -> None:
     os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
     args = parse_args()
     random.seed(args.seed)
+    language_pauses = parse_language_pauses(args.pause_language_at)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -169,6 +180,7 @@ def main() -> None:
                 cycle_index=cycle_index,
                 every=args.report_query_every,
                 query=args.report_query,
+                language_pauses=language_pauses,
             )
             attach_perception_screenshot(adapter, current_state, perception_dir)
         trace = runner.step()
@@ -205,6 +217,7 @@ def main() -> None:
         "allow_non_workspace_motor_action": args.allow_non_workspace_motor,
         "motor_execution_threshold": 0.02,
         "report_query_every": args.report_query_every,
+        "language_pause_cycles": {str(key): value for key, value in language_pauses.items()},
         "cycle_count": len(traces),
         "env_step_count": final_state.timestamp if final_state else None,
         "done": bool(final_state.done) if final_state else False,
@@ -259,6 +272,21 @@ def parse_score_modifiers(values):
     return modifiers
 
 
+def parse_language_pauses(values):
+    pauses = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError(
+                f"Invalid --pause-language-at {value!r}; expected CYCLE=TEXT."
+            )
+        cycle_text, prompt = value.split("=", 1)
+        cycle = int(cycle_text.strip())
+        if cycle < 0:
+            raise ValueError("--pause-language-at cycle must be non-negative.")
+        pauses[cycle] = prompt.strip()
+    return pauses
+
+
 def attach_perception_screenshot(
     adapter: ForagingEnvAdapter,
     state,
@@ -270,10 +298,29 @@ def attach_perception_screenshot(
     adapter.render_screenshot_to_state(state, str(path))
 
 
-def apply_report_query(state, *, cycle_index: int, every: int, query: str) -> None:
-    report_query = query if every > 0 and cycle_index > 0 and cycle_index % every == 0 else None
+def apply_report_query(
+    state,
+    *,
+    cycle_index: int,
+    every: int,
+    query: str,
+    language_pauses,
+) -> None:
+    user_prompt = language_pauses.get(cycle_index)
+    pause_requested = user_prompt is not None
+    report_query = (
+        None
+        if pause_requested
+        else query
+        if every > 0 and cycle_index > 0 and cycle_index % every == 0
+        else None
+    )
+    state.info["language_pause_requested"] = pause_requested
+    state.info["language_user_prompt"] = user_prompt
     state.info["report_query"] = report_query
     if isinstance(state.observation, dict):
+        state.observation["language_pause_requested"] = pause_requested
+        state.observation["language_user_prompt"] = user_prompt
         state.observation["report_query"] = report_query
 
 

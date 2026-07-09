@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 from gwt_agent.core.types import ModuleInput, ModuleProposal, to_jsonable
-from gwt_agent.llm.client import LLMClient, MockLLMClient
+from gwt_agent.llm.client import LLMClient, MockLLMClient, summarize_broadcast
 from gwt_agent.modules.base import BaseModule
 
 
@@ -213,6 +213,7 @@ class LLMLanguageModule(LLMModule):
         client: Optional[LLMClient] = None,
         model: Optional[str] = None,
     ) -> None:
+        self.input_history = []
         super().__init__(
             name="language",
             client=client,
@@ -221,12 +222,44 @@ class LLMLanguageModule(LLMModule):
             allow_action_hint=False,
             system_prompt=(
                 "You are the language center in a global workspace foraging system. "
-                "You receive experimenter instructions/report queries and the previous "
-                "workspace broadcast. Speak outward to the experimenter only when useful, "
-                "especially when a report_query is present. Do not send actions to the 2D "
+                "By default, you listen to the previous workspace broadcast and your own "
+                "recent input history. When pause_requested is true, the experimenter has "
+                "paused the run and is speaking directly to you through user_prompt; answer "
+                "that prompt using the previous broadcast and history. When report_query is "
+                "present, answer outward to the experimenter. Do not send actions to the 2D "
                 "simulator. Return only JSON matching the schema."
             ),
         )
+
+    def _payload(self, module_input: ModuleInput) -> dict:
+        payload = super()._payload(module_input)
+        payload["module_private_state"] = {
+            "input_history": list(self.input_history),
+        }
+        return payload
+
+    def _after_propose(
+        self,
+        module_input: ModuleInput,
+        proposal: ModuleProposal,
+    ) -> None:
+        private = module_input.private_observation or {}
+        if not isinstance(private, dict):
+            private = {}
+        self.input_history.append(
+            {
+                "cycle_t": module_input.cycle_t,
+                "env_t": module_input.env_t,
+                "mode": private.get("interaction_mode"),
+                "user_prompt": private.get("user_prompt"),
+                "report_query": private.get("report_query"),
+                "heard_broadcast": summarize_broadcast(to_jsonable(module_input.global_broadcast)),
+                "output_language": proposal.content.get("summary")
+                if isinstance(proposal.content, dict)
+                else str(proposal.content),
+            }
+        )
+        self.input_history = self.input_history[-8:]
 
 
 def proposal_response_schema() -> dict:

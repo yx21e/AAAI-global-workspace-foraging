@@ -26,7 +26,7 @@ Qiyuan simulator output
   -> InputRouter builds module-specific ModuleInput
        perception: previous broadcast + global visual map/screenshot
        motor: previous broadcast + nearby obstacle state
-       language: previous broadcast + current report query; task goal is shared
+       language: previous broadcast + current report query/user pause prompt; task goal is shared
   -> LLM-backed specialized modules produce one reply / ModuleProposal each
        perception can use a multimodal model and the current map screenshot
        motor/language can use text-only models
@@ -236,6 +236,28 @@ The perception LLM receives the current map screenshot from:
 ```text
 runs/qiyuan_integrated/<run_id>_perception_inputs/
 ```
+
+To demo an experimenter pause where the user speaks directly to the language
+agent, add one or more pause prompts:
+
+```bash
+PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
+  --qiyuan-path ../qiyuan_foraging_env \
+  --difficulty 2 \
+  --seed 7 \
+  --target-resources 1 \
+  --agent-backend auto \
+  --pause-language-at "8=What did you just hear from the workspace?"
+```
+
+At that cognitive cycle, the language agent receives the previous broadcast,
+the user prompt, and its own recent language input/output history. Because the
+language agent has no `action_hint`, a language-winning pause cycle is logged but
+does not call Qiyuan `env.step()`.
+
+The clickable viewer's right sidebar shows each module's output language at the
+bottom of its module card, and the Workspace panel shows the winning module's
+output language for that cycle.
 
 Default action policy is strict workspace action: if the winning broadcast has
 no `action_hint`, the cognitive cycle is logged but Qiyuan `env.step()` is not

@@ -145,9 +145,14 @@ class MockLLMClient:
 
     def _language_response(self, user_payload: JsonDict) -> JsonDict:
         state = private_observation(user_payload)
+        user_prompt = state.get("user_prompt")
+        pause_requested = bool(state.get("pause_requested"))
         query = state.get("report_query")
         broadcast = user_payload.get("last_broadcast")
         broadcast_summary = summarize_broadcast(broadcast)
+        private_state = user_payload.get("module_private_state") or {}
+        history = private_state.get("input_history") or []
+        history_summary = summarize_history(history)
         winner = None
         if isinstance(broadcast, dict):
             winner = broadcast.get("winner_module")
@@ -158,7 +163,13 @@ class MockLLMClient:
             "No outward verbal answer is needed right now.",
             "The language center is monitoring the latest broadcast for possible reporting.",
         ]
-        if query:
+        if pause_requested and user_prompt:
+            summary = (
+                f"User pause prompt: {user_prompt}. I heard the active workspace broadcast as "
+                f"{broadcast_summary}. Recent language history: {history_summary}."
+            )
+            confidence = 0.88
+        elif query:
             summary = (
                 f"Experimenter query: {query}. Active workspace broadcast is "
                 f"{broadcast_summary}. Task goal is {user_payload.get('task_goal')}."
@@ -173,6 +184,7 @@ class MockLLMClient:
         observations = [] if summary == "Idle." else [
             f"last_workspace_winner={winner or 'none'}",
             f"broadcast_summary={broadcast_summary}",
+            f"history_summary={history_summary}",
         ]
         return {
             "summary": summary,
@@ -315,6 +327,27 @@ def summarize_broadcast(value) -> str:
     if len(summary) > 120:
         summary = summary[:117] + "..."
     return f"{module}: {summary}" if summary else str(module)
+
+
+def summarize_history(history) -> str:
+    if not history:
+        return "none"
+    latest = history[-3:]
+    parts = []
+    for item in latest:
+        if not isinstance(item, dict):
+            continue
+        mode = item.get("mode") or "unknown"
+        prompt = item.get("user_prompt") or item.get("report_query") or item.get("heard_broadcast")
+        output = item.get("output_language")
+        prompt_text = str(prompt or "")
+        output_text = str(output or "")
+        if len(prompt_text) > 60:
+            prompt_text = prompt_text[:57] + "..."
+        if len(output_text) > 60:
+            output_text = output_text[:57] + "..."
+        parts.append(f"{mode}: input={prompt_text}; output={output_text}")
+    return " | ".join(parts) if parts else "none"
 
 
 def choose_greedy_safe_action(

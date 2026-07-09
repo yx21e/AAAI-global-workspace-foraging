@@ -86,6 +86,41 @@ class LLMAgentTest(unittest.TestCase):
         self.assertIsNone(proposal.action_hint)
         self.assertIn("Experimenter query", proposal.content["summary"])
 
+    def test_language_pause_prompt_uses_history(self):
+        module = LLMLanguageModule(client=MockLLMClient())
+        first_input = ModuleInput(
+            module_name="language",
+            env_t=0,
+            cycle_t=0,
+            private_observation={
+                "interaction_mode": "broadcast_listening",
+                "pause_requested": False,
+                "user_prompt": None,
+                "report_query": None,
+            },
+            task_goal="collect one resource",
+        )
+        module.propose(first_input)
+        pause_input = ModuleInput(
+            module_name="language",
+            env_t=0,
+            cycle_t=1,
+            private_observation={
+                "interaction_mode": "user_pause",
+                "pause_requested": True,
+                "user_prompt": "What did you just hear?",
+                "report_query": None,
+            },
+            task_goal="collect one resource",
+        )
+
+        proposal = module.propose(pause_input)
+
+        self.assertIsNone(proposal.action_hint)
+        self.assertIn("User pause prompt", proposal.content["summary"])
+        self.assertIn("Recent language history", proposal.content["summary"])
+        self.assertEqual(len(module.input_history), 2)
+
 
 class ForagingScreenshotAttachTest(unittest.TestCase):
     def test_adapter_attaches_rendered_screenshot_to_state(self):
