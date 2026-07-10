@@ -36,7 +36,12 @@ class AttentionGate:
                 last_broadcast=last_broadcast,
             )
             recurrence_bonus = self._recurrence_bonus(proposal, workspace_state, experiment)
-            uptake = importance.importance + recurrence_bonus
+            workspace_adjustment = self._workspace_adjustment(
+                proposal=proposal,
+                module_input=module_input,
+                last_broadcast=last_broadcast,
+            )
+            uptake = (importance.importance + recurrence_bonus) * workspace_adjustment
             scored.append(
                 ModuleProposal(
                     module_name=proposal.module_name,
@@ -56,6 +61,7 @@ class AttentionGate:
                             "salience_weight": experiment.salience_weight,
                             "relevance_weight": experiment.relevance_weight,
                             "recurrence_bonus": recurrence_bonus,
+                            "workspace_adjustment": workspace_adjustment,
                             "encoder": self.scorer.encoder.__class__.__name__,
                         },
                     },
@@ -75,3 +81,26 @@ class AttentionGate:
         if active.winner_module == proposal.module_name:
             return experiment.workspace_recurrence_bonus
         return 0.0
+
+    def _workspace_adjustment(
+        self,
+        *,
+        proposal: ModuleProposal,
+        module_input: ModuleInput,
+        last_broadcast: Optional[WorkspaceBroadcast],
+    ) -> float:
+        lower_name = proposal.module_name.lower()
+        action_hint = (proposal.action_hint or "").upper()
+        if lower_name.startswith("motor") and action_hint in {"NOOP", "WAIT", "STAY", "NONE"}:
+            return 0.35
+        if (
+            lower_name.startswith("motor")
+            and last_broadcast is not None
+            and str(last_broadcast.winner_module).lower().startswith("motor")
+        ):
+            return 0.55
+        if "language" in lower_name or "report" in lower_name:
+            private = module_input.private_observation
+            if isinstance(private, dict) and not private.get("pause_requested") and not private.get("report_query"):
+                return 0.55
+        return 1.0

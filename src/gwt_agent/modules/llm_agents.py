@@ -165,13 +165,16 @@ class LLMMotorModule(LLMModule):
             allow_action_hint=True,
             system_prompt=(
                 "You are the motor center in a global workspace foraging system. "
-                "You receive nearby obstacle/blocked-direction information, agent position, "
-                "carry state, target positions, and the previous workspace broadcast. Propose "
-                "one immediate simulator action from UP, DOWN, LEFT, RIGHT, PICKUP, or NOOP. "
-                "Never move into a blocked direction. Use PICKUP only when standing on the "
-                "resource and not carrying. Use your recent position history to avoid short "
-                "oscillations when another safe step is available. Return only JSON matching "
-                "the schema."
+                "Your private channel is limited to nearby obstacle/blocked-direction "
+                "information, current agent position, carry state, and action feedback. "
+                "Target locations or desired directions must come from the previous workspace "
+                "broadcast, not from private input. Propose one immediate simulator action "
+                "from UP, DOWN, LEFT, RIGHT, PICKUP, or NOOP. Never move into a blocked "
+                "direction. Use PICKUP only when the broadcast target is the resource and "
+                "the current agent position is at that target. If no target/action cue is "
+                "available in the broadcast, return NOOP unless a local safety reflex is "
+                "needed. Use your recent position history to avoid short oscillations when "
+                "another safe step is available. Return only JSON matching the schema."
             ),
         )
 

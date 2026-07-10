@@ -171,6 +171,15 @@ def get_symbolic(envelope: dict, *, before: bool) -> dict:
 def proposal_language(proposal: dict) -> str:
     content = proposal.get("content")
     if isinstance(content, dict):
+        summary = content.get("summary") or content.get("verbal_report")
+        observations = content.get("observations")
+        if summary and isinstance(observations, list) and observations:
+            shown = "; ".join(str(item) for item in observations[:5])
+            if len(observations) > 5:
+                shown += "; ..."
+            return f"{summary}\nobservations: {shown}"
+        if summary:
+            return str(summary)
         for key in ("verbal_report", "summary", "salient_event", "planned_action", "goal"):
             value = content.get(key)
             if value:

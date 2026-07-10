@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import List, Optional, Tuple
 
 from gwt_agent.core.types import ModuleInput, ModuleProposal
@@ -25,10 +26,14 @@ class MotorModule(BaseModule):
         if goal != self.last_goal:
             self.recent_positions = []
             self.last_goal = goal
-        target = tuple(state.get("base_position" if carrying else "resource_position", agent_pos))
+        broadcast_positions = extract_positions_from_broadcast(module_input.global_broadcast)
+        target_key = "base_position" if carrying else "resource_position"
+        target = broadcast_positions.get(target_key)
         nearby_obstacles = {tuple(item) for item in state.get("nearby_obstacles", [])}
         blocked_directions = state.get("blocked_directions", {})
-        if not carrying and state.get("resource_position") is not None and agent_pos == target:
+        if target is None:
+            action = "NOOP"
+        elif not carrying and agent_pos == target:
             action = "PICKUP"
         else:
             action = self._choose_action(
@@ -45,6 +50,7 @@ class MotorModule(BaseModule):
             content={
                 "goal": goal,
                 "target_position": target,
+                "target_source": "workspace_broadcast" if target is not None else "unavailable",
                 "planned_action": action,
                 "blocked_directions": blocked_directions,
                 "recent_positions": self.recent_positions,
@@ -114,3 +120,43 @@ class MotorModule(BaseModule):
     def _remember_position(self, position: Position) -> None:
         self.recent_positions.append(position)
         self.recent_positions = self.recent_positions[-6:]
+
+
+def extract_positions_from_broadcast(broadcast) -> dict:
+    if broadcast is None:
+        return {}
+    content = getattr(broadcast, "content", None)
+    if not isinstance(content, dict):
+        return {}
+    positions = {}
+    for key in ("resource_position", "base_position", "agent_position", "target_position"):
+        parsed = parse_position_value(content.get(key))
+        if parsed is not None:
+            positions[key] = parsed
+    observations = content.get("observations")
+    if isinstance(observations, list):
+        for item in observations:
+            if not isinstance(item, str) or "=" not in item:
+                continue
+            key, raw_value = item.split("=", 1)
+            key = key.strip()
+            if key in {"resource_position", "base_position", "agent_position", "target_position"}:
+                parsed = parse_position_value(raw_value.strip())
+                if parsed is not None:
+                    positions[key] = parsed
+    return positions
+
+
+def parse_position_value(value) -> Optional[Position]:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            return (int(value[0]), int(value[1]))
+        except (TypeError, ValueError):
+            return None
+    match = re.search(r"[-+]?\d+\s*,\s*[-+]?\d+", str(value))
+    if not match:
+        return None
+    left, right = match.group(0).split(",", 1)
+    return (int(left.strip()), int(right.strip()))

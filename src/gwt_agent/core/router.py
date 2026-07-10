@@ -89,6 +89,8 @@ class InputRouter:
                 "agent_position": state.get("agent_position"),
                 "resource_position": state.get("resource_position"),
                 "base_position": state.get("base_position"),
+                "carrying_resource": state.get("carrying_resource"),
+                "resources_collected": state.get("resources_collected"),
                 "wall_positions": state.get("wall_positions", state.get("hazard_positions")),
                 "action_success": state.get("action_success"),
                 "grid_size": state.get("grid_size"),
@@ -96,8 +98,6 @@ class InputRouter:
         if lower_name.startswith("motor"):
             return {
                 "agent_position": state.get("agent_position"),
-                "resource_position": state.get("resource_position"),
-                "base_position": state.get("base_position"),
                 "carrying_resource": state.get("carrying_resource"),
                 "nearby_obstacles": state.get("nearby_obstacles", state.get("hazards_nearby")),
                 "blocked_directions": state.get("blocked_directions", {}),

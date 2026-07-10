@@ -5,6 +5,7 @@ import importlib.util
 import json
 import mimetypes
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol
@@ -90,10 +91,13 @@ class MockLLMClient:
         ]
         if screenshot:
             observations.append(f"map_screenshot={screenshot}")
+        agent = state.get("agent_position")
+        resource = state.get("resource_position")
+        base = state.get("base_position")
         return {
             "summary": (
-                "Global map and screenshot are available; the visual center "
-                "identifies agent, base, resource, and wall layout."
+                f"Visual map update: agent at {agent}, resource at {resource}, "
+                f"base at {base}, with {len(walls)} known walls."
             ),
             "observations": observations,
             "confidence": 0.72,
@@ -106,8 +110,9 @@ class MockLLMClient:
         broadcast_summary = summarize_broadcast(user_payload.get("last_broadcast"))
         agent_pos = tuple_or_none(state.get("agent_position")) or (0, 0)
         carrying = bool(state.get("carrying_resource", False))
+        broadcast_positions = extract_positions_from_broadcast(user_payload.get("last_broadcast"))
         target_key = "base_position" if carrying else "resource_position"
-        target = tuple_or_none(state.get(target_key)) or agent_pos
+        target = tuple_or_none(broadcast_positions.get(target_key))
         blocked = state.get("blocked_directions") or {}
         nearby = {tuple(item) for item in state.get("nearby_obstacles") or []}
         private_state = user_payload.get("module_private_state") or {}
@@ -116,7 +121,10 @@ class MockLLMClient:
             for item in private_state.get("recent_positions", [])
         }
 
-        if not carrying and state.get("resource_position") is not None and agent_pos == target:
+        target_text = str(target) if target is not None else "no broadcast target"
+        if target is None:
+            action = "NOOP"
+        elif not carrying and agent_pos == target:
             action = "PICKUP"
         else:
             action = choose_greedy_safe_action(
@@ -128,19 +136,41 @@ class MockLLMClient:
             )
 
         goal = "return_to_base" if carrying else "collect_resource"
+        if target is None:
+            return {
+                "summary": "No workspace target or action cue is available; motor holds position.",
+                "observations": [
+                    f"agent_position={agent_pos}",
+                    "target_source=unavailable",
+                    f"blocked_directions={blocked}",
+                ],
+                "confidence": 0.35,
+                "action_hint": "NOOP",
+                "rationale": (
+                    "The motor center only has local obstacle information and has not "
+                    "received a global target through the workspace broadcast."
+                ),
+            }
         return {
             "summary": (
-                f"Using the current workspace broadcast ({broadcast_summary}), "
-                f"motor center proposes {action} for {goal}."
+                f"Motor proposes {action}; goal={goal}; target={target_text}; "
+                "cue_source=workspace_broadcast."
             ),
             "observations": [
                 f"agent_position={agent_pos}",
+                f"resource_position={broadcast_positions.get('resource_position')}",
+                f"base_position={broadcast_positions.get('base_position')}",
                 f"target_position={target}",
+                "target_source=workspace_broadcast" if target is not None else "target_source=unavailable",
+                f"heard_broadcast={broadcast_summary}",
                 f"blocked_directions={blocked}",
             ],
             "confidence": 0.76 if action != "NOOP" else 0.45,
             "action_hint": action,
-            "rationale": "Choose the next allowed simulator action using nearby obstacle constraints.",
+            "rationale": (
+                "Choose the next simulator action using nearby obstacle constraints "
+                "and target information available from the workspace broadcast."
+            ),
         }
 
     def _language_response(self, user_payload: JsonDict) -> JsonDict:
@@ -590,6 +620,49 @@ def summarize_history(history) -> str:
             output_text = output_text[:57] + "..."
         parts.append(f"{mode}: input={prompt_text}; output={output_text}")
     return " | ".join(parts) if parts else "none"
+
+
+def extract_positions_from_broadcast(value) -> JsonDict:
+    """Extract target coordinates that were globally broadcast, not private to motor."""
+    positions: JsonDict = {}
+    if not isinstance(value, dict):
+        return positions
+    content = value.get("content")
+    if not isinstance(content, dict):
+        return positions
+    for key in ("resource_position", "base_position", "agent_position", "target_position"):
+        if key in content:
+            parsed = parse_position_value(content.get(key))
+            if parsed is not None:
+                positions[key] = parsed
+    observations = content.get("observations")
+    if isinstance(observations, list):
+        for item in observations:
+            if not isinstance(item, str) or "=" not in item:
+                continue
+            key, raw_value = item.split("=", 1)
+            key = key.strip()
+            if key in {"resource_position", "base_position", "agent_position", "target_position"}:
+                parsed = parse_position_value(raw_value.strip())
+                if parsed is not None:
+                    positions[key] = parsed
+    return positions
+
+
+def parse_position_value(value):
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            return (int(value[0]), int(value[1]))
+        except (TypeError, ValueError):
+            return None
+    text = str(value)
+    match = re.search(r"[-+]?\d+\s*,\s*[-+]?\d+", text)
+    if not match:
+        return None
+    left, right = match.group(0).split(",", 1)
+    return (int(left.strip()), int(right.strip()))
 
 
 def choose_greedy_safe_action(

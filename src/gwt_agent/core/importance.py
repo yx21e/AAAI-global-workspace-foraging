@@ -86,8 +86,8 @@ class DeterministicImportanceScorer:
         previous_private_input,
         last_broadcast: Optional[WorkspaceBroadcast],
     ) -> ProposalImportance:
-        current_private = stable_text(module_input.private_observation)
-        previous_private = stable_text(previous_private_input)
+        current_private = stable_text(salience_view(module_input.private_observation))
+        previous_private = stable_text(salience_view(previous_private_input))
         proposal_text = stable_text(proposal.content)
         context_text = self._context_text(module_input, last_broadcast)
 
@@ -142,3 +142,34 @@ def cosine_similarity(left: Iterable[float], right: Iterable[float]) -> float:
     if left_norm == 0.0 or right_norm == 0.0:
         return 0.0
     return dot / (left_norm * right_norm)
+
+
+def salience_view(value):
+    """Use task-relevant changing fields for bottom-up salience.
+
+    Full visual maps are useful for perception agents, but they are too large and
+    mostly static for a simple embedding-change salience score. This compact
+    view keeps movement/carry/task-state changes from being diluted by unchanged
+    wall layout or screenshot path strings.
+    """
+    if not isinstance(value, dict):
+        return value
+    if "global_visual_observation" in value:
+        return {
+            "agent_position": value.get("agent_position"),
+            "resource_position": value.get("resource_position"),
+            "base_position": value.get("base_position"),
+            "carrying_resource": value.get("carrying_resource"),
+            "resources_collected": value.get("resources_collected"),
+            "action_success": value.get("action_success"),
+            "grid_size": value.get("grid_size"),
+        }
+    if "blocked_directions" in value:
+        return {
+            "agent_position": value.get("agent_position"),
+            "carrying_resource": value.get("carrying_resource"),
+            "blocked_directions": value.get("blocked_directions"),
+            "nearby_obstacles": value.get("nearby_obstacles"),
+            "action_success": value.get("action_success"),
+        }
+    return value

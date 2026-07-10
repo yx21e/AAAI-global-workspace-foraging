@@ -5,12 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from gwt_agent.core.action import ActionResolver
 from gwt_agent.core.export import trace_step_to_envelope, write_action_stream
 from gwt_agent.core.experiment import ExperimentConfig
 from gwt_agent.core.logger import TraceLogger
 from gwt_agent.core.router import InputRouter
 from gwt_agent.core.runner import WorkspaceRunner
-from gwt_agent.core.types import EnvironmentState
+from gwt_agent.core.types import EnvironmentState, ModuleProposal, WorkspaceBroadcast
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
 from gwt_agent.envs.mock_env import MockGridAdapter
 from gwt_agent.modules.language import LanguageReportModule
@@ -98,7 +99,7 @@ class WorkspaceRunnerTest(unittest.TestCase):
             self.assertEqual(records[0]["action"], envelopes[0].env_action.command)
             self.assertEqual(records[0]["should_step"], envelopes[0].env_action.should_step)
 
-    def test_motor_threshold_route_can_execute_without_workspace_action(self):
+    def test_motor_threshold_route_does_not_execute_noop_without_target(self):
         runner = WorkspaceRunner(
             env_adapter=MockGridAdapter(),
             modules=make_modules(),
@@ -111,7 +112,7 @@ class WorkspaceRunnerTest(unittest.TestCase):
         )
 
         traces = runner.run(num_steps=8)
-        threshold_actions = [
+        threshold_steps = [
             trace
             for trace in traces
             if trace.env_action
@@ -119,8 +120,47 @@ class WorkspaceRunnerTest(unittest.TestCase):
             == "non_workspace_motor_threshold"
         ]
 
-        self.assertTrue(threshold_actions)
-        self.assertTrue(all(trace.env_action.should_step for trace in threshold_actions))
+        self.assertFalse(threshold_steps)
+
+    def test_motor_threshold_route_can_execute_real_motor_action(self):
+        resolver = ActionResolver(
+            ExperimentConfig(
+                allow_non_workspace_motor_action=True,
+                motor_execution_threshold=0.02,
+            )
+        )
+        broadcast = WorkspaceBroadcast(
+            timestamp=0,
+            winner_module="language",
+            content={"summary": "Language won; no simulator action."},
+            importance_score=0.5,
+            action_hint=None,
+        )
+        proposals = [
+            ModuleProposal(
+                module_name="language",
+                content={"summary": "Language won; no simulator action."},
+                importance_score=0.5,
+                action_hint=None,
+            ),
+            ModuleProposal(
+                module_name="motor",
+                content={"summary": "Local reflex proposes RIGHT."},
+                importance_score=0.4,
+                uptake_score=0.4,
+                confidence=0.7,
+                action_hint="RIGHT",
+            ),
+        ]
+
+        action = resolver.resolve(broadcast, proposals)
+
+        self.assertTrue(action.should_step)
+        self.assertEqual(action.command, "RIGHT")
+        self.assertEqual(
+            action.metadata.get("action_route"),
+            "non_workspace_motor_threshold",
+        )
 
     def test_default_no_action_when_workspace_winner_has_no_action(self):
         runner = WorkspaceRunner(
@@ -160,6 +200,14 @@ class WorkspaceRunnerTest(unittest.TestCase):
         self.assertNotIn(
             "last_broadcast",
             module_inputs["language_report"].private_observation,
+        )
+        self.assertNotIn(
+            "resource_position",
+            module_inputs["motor"].private_observation,
+        )
+        self.assertNotIn(
+            "base_position",
+            module_inputs["motor"].private_observation,
         )
         self.assertIsNone(module_inputs["language_report"].global_broadcast)
 

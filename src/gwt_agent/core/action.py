@@ -39,7 +39,9 @@ class ActionResolver:
             motor_proposals = [
                 proposal
                 for proposal in proposal_list
-                if proposal.action_hint and proposal.module_name.lower().startswith("motor")
+                if proposal.action_hint
+                and proposal.action_hint.upper() not in {"NOOP", "WAIT", "STAY", "NONE"}
+                and proposal.module_name.lower().startswith("motor")
             ]
             if motor_proposals:
                 best_motor = max(motor_proposals, key=lambda proposal: proposal.importance_score)
