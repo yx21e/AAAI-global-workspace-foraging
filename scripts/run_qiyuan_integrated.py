@@ -148,6 +148,7 @@ def main() -> None:
     envelope_path = out_dir / f"{run_id}_envelopes.jsonl"
     action_path = out_dir / f"{run_id}_actions.jsonl"
     summary_path = out_dir / f"{run_id}_summary.json"
+    grid_path = out_dir / f"{run_id}_episode_grid.json"
     frame_dir = out_dir / f"{run_id}_frames"
     perception_dir = out_dir / f"{run_id}_perception_inputs"
 
@@ -177,6 +178,11 @@ def main() -> None:
     )
 
     initial_state = adapter.reset()
+    if adapter.episode_grid is not None:
+        grid_path.write_text(
+            json.dumps(adapter.episode_grid, indent=2, ensure_ascii=True),
+            encoding="utf-8",
+        )
     runner._current_state = initial_state
     if not args.no_render:
         frame_dir.mkdir(parents=True, exist_ok=True)
@@ -244,6 +250,11 @@ def main() -> None:
         "trace_path": str(trace_path),
         "envelope_path": str(envelope_path),
         "action_stream_path": str(action_path),
+        "episode_grid_path": str(grid_path) if adapter.episode_grid is not None else None,
+        "qiyuan_playback_api": {
+            "get_grid": hasattr(env, "get_grid"),
+            "load_state": hasattr(env, "load_state"),
+        },
         "out_dir": str(out_dir),
         "frame_dir": None if args.no_render else str(frame_dir),
         "perception_screenshot_dir": str(perception_dir),

@@ -265,6 +265,16 @@ summary under:
 runs/qiyuan_integrated/
 ```
 
+For Qiyuan's current playback API, the run also writes the episode grid once:
+
+```text
+runs/qiyuan_integrated/<run_id>_episode_grid.json
+```
+
+The same grid is embedded in each trace state's `info.qiyuan_episode_grid`, so
+`trace` replay can use Qiyuan's official `load_state(state, grid)` API even when
+only the envelope JSONL is available.
+
 It also writes a clickable browser viewer:
 
 ```text
@@ -345,6 +355,7 @@ PYTHONPATH=src python scripts/replay_qiyuan_record.py \
   --qiyuan-path ../qiyuan_foraging_env \
   --mode trace \
   --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
+  --grid runs/qiyuan_integrated/<run_id>_episode_grid.json \
   --render-dir runs/qiyuan_integrated/<run_id>_trace_replay
 ```
 
@@ -356,6 +367,7 @@ PYTHONPATH=src python scripts/replay_qiyuan_record.py \
   --mode action \
   --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
   --actions runs/qiyuan_integrated/<run_id>_actions.jsonl \
+  --grid runs/qiyuan_integrated/<run_id>_episode_grid.json \
   --render-dir runs/qiyuan_integrated/<run_id>_action_replay
 ```
 
@@ -387,6 +399,7 @@ EnvironmentState(
     info={
         "experimenter_instruction": ...,
         "report_query": optional,
+        "qiyuan_episode_grid": grid_from_env_get_grid,
     },
 )
 ```
@@ -465,7 +478,15 @@ or, for no movement:
 }
 ```
 
-Qiyuan-side replay should use:
+Qiyuan-side exact trace replay should use Qiyuan's playback API:
+
+```python
+grid = json.load(open("<run_id>_episode_grid.json"))
+env.load_state(step_record["env_state"]["observation"], grid)
+env.render(...)
+```
+
+Minimal action-stream replay should use:
 
 ```python
 if record["should_step"]:

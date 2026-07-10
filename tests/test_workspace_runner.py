@@ -260,6 +260,9 @@ class WorkspaceRunnerTest(unittest.TestCase):
 
         state = adapter.reset()
         self.assertFalse(state.done)
+        self.assertEqual(adapter.episode_grid, env.grid)
+        self.assertEqual(state.info["qiyuan_episode_grid"], env.grid)
+        self.assertTrue(state.info["qiyuan_playback_api"]["get_grid"])
 
         done_state = adapter.step("RIGHT")
         self.assertTrue(done_state.done)
@@ -292,6 +295,9 @@ class FakeQiyuanEnv:
         self.resources_collected = 0
         self.step_count = 0
         return self._state()
+
+    def get_grid(self):
+        return [row[:] for row in self.grid]
 
     def step(self, action):
         self.step_count += 1

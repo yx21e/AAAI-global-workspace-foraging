@@ -46,7 +46,13 @@ Each cognitive timestep can be exported as one JSON object:
     "available_actions": ["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"],
     "reward": 0.0,
     "done": false,
-    "info": {}
+    "info": {
+      "qiyuan_episode_grid": [[1, 1, 1], [1, 0, 1], [1, 1, 1]],
+      "qiyuan_playback_api": {
+        "get_grid": true,
+        "load_state": true
+      }
+    }
   },
   "module_states": [
     {
@@ -155,9 +161,12 @@ else:
     state = current_state
 ```
 
-For exact visualization replay, use the full envelope file because it contains
-the recorded symbolic map/state at every cognitive cycle. For simulator
-execution replay, use the minimal action stream and call Qiyuan `env.step()`.
+For exact visualization replay, use the full envelope file plus Qiyuan's
+episode grid. Current Qiyuan exposes `get_grid()` at record time and
+`load_state(state, grid)` at replay time; our integrated run writes
+`<run_id>_episode_grid.json` and also embeds the same grid in
+`env_state.info.qiyuan_episode_grid`. For simulator execution replay, use the
+minimal action stream and call Qiyuan `env.step()`.
 
 Default action policy: if the workspace broadcast has no `action_hint`,
 `should_step=false`; Qiyuan does not receive an action for that cognitive cycle.
@@ -294,6 +303,7 @@ Route meanings:
 - `gwt_agent.core.export.write_envelopes_jsonl(...)`
 - `gwt_agent.core.export.replay_actions(...)`
 - `gwt_agent.envs.foraging_adapter.ForagingEnvAdapter`
+- `gwt_agent.envs.qiyuan_replay.render_trace_replay(...)`
 - `scripts/run_qiyuan_integrated.py`
 - `scripts/replay_qiyuan_record.py`
 

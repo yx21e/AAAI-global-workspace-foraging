@@ -31,6 +31,7 @@ class ForagingEnvAdapter(EnvironmentAdapter):
         self.experimenter_instruction = experimenter_instruction
         self.target_resources = target_resources
         self._last_state: Optional[Dict[str, Any]] = None
+        self.episode_grid: Optional[List[List[int]]] = None
 
     def reset(self) -> EnvironmentState:
         kwargs = {"difficulty": self.difficulty}
@@ -40,6 +41,11 @@ class ForagingEnvAdapter(EnvironmentAdapter):
             state = self.env.reset(**kwargs)
         except TypeError:
             state = self.env.reset(difficulty=self.difficulty)
+        if hasattr(self.env, "get_grid"):
+            self.episode_grid = self.env.get_grid()
+        else:
+            grid = getattr(self.env, "grid", None)
+            self.episode_grid = [row[:] for row in grid] if grid is not None else None
         self._last_state = state
         return self._convert_state(state)
 
@@ -108,6 +114,11 @@ class ForagingEnvAdapter(EnvironmentAdapter):
                 "difficulty": self.difficulty,
                 "target_resources": self.target_resources,
                 "action_success": state.get("action_success"),
+                "qiyuan_episode_grid": self.episode_grid,
+                "qiyuan_playback_api": {
+                    "get_grid": hasattr(self.env, "get_grid"),
+                    "load_state": hasattr(self.env, "load_state"),
+                },
                 "experimenter_instruction": state.get(
                     "experimenter_instruction",
                     self.experimenter_instruction,

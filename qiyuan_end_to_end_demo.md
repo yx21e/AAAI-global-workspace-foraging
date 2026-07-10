@@ -152,6 +152,7 @@ PYTHONPATH=src python3 scripts/replay_qiyuan_record.py \
   --qiyuan-path ../qiyuan_foraging_env \
   --mode trace \
   --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
+  --grid runs/qiyuan_integrated/<run_id>_episode_grid.json \
   --render-dir runs/qiyuan_integrated/<run_id>_trace_replay
 ```
 
@@ -163,12 +164,14 @@ PYTHONPATH=src python3 scripts/replay_qiyuan_record.py \
   --mode action \
   --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
   --actions runs/qiyuan_integrated/<run_id>_actions.jsonl \
+  --grid runs/qiyuan_integrated/<run_id>_episode_grid.json \
   --render-dir runs/qiyuan_integrated/<run_id>_action_replay
 ```
 
 Use `trace` replay for slides and debugging because it restores recorded states
-frame by frame. Use `action` replay to prove Qiyuan can consume our minimal
-action stream and call `env.step(action)`.
+frame by frame through Qiyuan's current `load_state(state, grid)` API. Use
+`action` replay to prove Qiyuan can consume our minimal action stream and call
+`env.step(action)`.
 
 ## 4. Experimenter Prompt Design
 

@@ -7,6 +7,8 @@ from pathlib import Path
 
 from gwt_agent.envs.qiyuan_loader import load_foraging_env_class
 from gwt_agent.envs.qiyuan_replay import (
+    episode_grid_from_trace,
+    load_grid,
     load_jsonl,
     render_action_replay,
     render_trace_replay,
@@ -44,6 +46,14 @@ def parse_args() -> argparse.Namespace:
         help="Minimal action-stream JSONL. Required for --mode action.",
     )
     parser.add_argument(
+        "--grid",
+        default=None,
+        help=(
+            "Optional episode grid JSON from run_qiyuan_integrated.py. If omitted, "
+            "the replay code tries to read qiyuan_episode_grid from the trace."
+        ),
+    )
+    parser.add_argument(
         "--render-dir",
         default=str(project_root / "runs" / "qiyuan_replay_frames"),
     )
@@ -63,6 +73,7 @@ def main() -> None:
     ForagingEnv = load_foraging_env_class(args.qiyuan_path)
     env = ForagingEnv()
     trace_records = load_jsonl(args.trace)
+    episode_grid = load_grid(args.grid) if args.grid else episode_grid_from_trace(trace_records)
 
     if args.mode == "trace":
         frames = render_trace_replay(
@@ -70,12 +81,13 @@ def main() -> None:
             envelope_records=trace_records,
             render_dir=args.render_dir,
             prefix="trace_replay",
+            episode_grid=episode_grid,
         )
     else:
         if not args.actions:
             raise ValueError("--actions is required when --mode action")
         action_records = load_jsonl(args.actions)
-        if not restore_initial_env_from_trace(env, trace_records):
+        if not restore_initial_env_from_trace(env, trace_records, episode_grid=episode_grid):
             raise ValueError("Trace file is empty; cannot restore initial env.")
         frames = render_action_replay(
             env=env,
@@ -91,6 +103,8 @@ def main() -> None:
         frames=frames,
         source_trace=args.trace,
         source_actions=args.actions,
+        source_grid=args.grid,
+        used_load_state=bool(episode_grid is not None and hasattr(env, "load_state")),
     )
     print(f"rendered {len(frames)} replay frames to {args.render_dir}")
     print(f"wrote replay summary to {summary_path}")
