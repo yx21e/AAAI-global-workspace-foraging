@@ -1,104 +1,111 @@
-# Multi-Agent Global Workspace Scaffold
+# AAAI Global Workspace Foraging
 
-This repository contains the non-2D-environment side of the project: a small
-Python framework for running specialized modules through a central global
-workspace, selecting a winning broadcast, resolving a standardized simulator
-action, and logging every cognitive timestep.
-
-The code is designed to connect to Qiyuan's foraging simulator:
+This repository contains the current runnable side of our Global Workspace
+foraging demo. It connects our multi-module workspace loop to Qiyuan's 2D
+foraging environment:
 
 <https://github.com/llll0630/Foraging-Environment-Design>
 
-The 2D character environment is intentionally behind an adapter interface. When
-the real environment code arrives, add a concrete adapter that implements:
+The project should be described as a **GWT/GWS-inspired engineering scaffold**,
+not as a biologically faithful Global Neuronal Workspace implementation. It
+implements the practical selection-broadcast loop we need for demos, replay,
+ablation, and handoff to the simulator side.
 
-```python
-class EnvironmentAdapter:
-    def reset(self) -> EnvironmentState: ...
-    def step(self, action: str) -> EnvironmentState: ...
-```
-
-## Current Flow
+## Current Pipeline
 
 ```text
-Qiyuan simulator output
-  -> EnvironmentAdapter builds EnvironmentState
-  -> InputRouter builds module-specific ModuleInput
-       perception: previous broadcast + global visual map/screenshot
-       motor: previous broadcast + nearby obstacle state
-       language: previous broadcast + current report query/user pause prompt; task goal is shared
-  -> LLM-backed specialized modules produce one reply / ModuleProposal each
-       perception can use a multimodal model and the current map screenshot
-       motor/language can use text-only models
-  -> fixed deterministic ImportanceScorer
-       bottom-up salience = private-input change from previous step
-       top-down relevance = similarity(reply, task goal + previous broadcast)
-  -> CentralWorkspace all-or-none ignition
-       winner must be highest score and exceed ignition_threshold
-       otherwise old workspace content is maintained and decays
-  -> WorkspaceBroadcast to all three modules
+Qiyuan ForagingEnv
+  -> ForagingEnvAdapter
+     builds EnvironmentState and saves Qiyuan episode grid
+  -> InputRouter
+     perception: previous broadcast + global map/screenshot + symbolic visual state
+     motor: previous broadcast + local obstacle/blocked-direction state only
+     language: previous broadcast + experimenter pause/query + language history
+  -> specialized modules produce ModuleProposal objects
+     perception may use a multimodal model
+     motor/language may use text-only models
+  -> deterministic AttentionGate
+     bottom-up salience = private-input change
+     top-down relevance = proposal similarity to task goal + previous broadcast
+     fixed workspace adjustments prevent idle language/NOOP motor/motor echo dominance
+  -> CentralWorkspace
+     highest proposal above ignition threshold wins
+     otherwise maintained content decays
+  -> WorkspaceBroadcast
+     winning content is broadcast back to all modules on the next cycle
   -> ActionResolver
-       workspace action route if active broadcast asks for action
-       non-workspace motor route if motor importance exceeds motor threshold
-  -> standardized EnvAction for Qiyuan
-  -> TraceLogger writes JSONL
+     executes workspace action if the winning broadcast has an action_hint
+     optionally executes high-importance motor action through non-workspace route
+  -> Qiyuan env.step(action) only when EnvAction.should_step=true
+  -> trace/action/viewer/replay artifacts
 ```
 
-The optional motor route threshold is independent from the workspace ignition
-threshold, so threshold-level / non-workspace actions can be studied separately.
-It is disabled by default; if the winning workspace broadcast has no
-`action_hint`, the simulator does not step.
-If no proposal crosses the ignition threshold and no old content is still
-maintained, the trace records a `no_ignition` placeholder, but that placeholder
-is not fed back as a real broadcast on the next cycle.
+Important implementation boundaries:
 
-## Quick Start
+- Modules do **not** receive identical full environment information.
+- The motor module does **not** receive `resource_position` or `base_position`
+  through its private channel. It can only use target information after that
+  information appears in a workspace broadcast.
+- The language module is the experimenter-facing spokesperson. It never sends
+  actions to Qiyuan.
+- The non-workspace motor route is off by default. When enabled, it represents
+  an automatic/local action route and is logged separately from workspace actions.
 
-```bash
-git clone https://github.com/yx21e/AAAI-global-workspace-foraging.git
-cd AAAI-global-workspace-foraging
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
-python scripts/run_mock.py
-python scripts/export_mock_actions.py
-python -m unittest discover -s tests -v
+## Repository Layout
+
+```text
+configs/                  default config examples
+examples/                 minimal action-stream example
+scripts/                  runnable demos, replay, viewer server, HF downloads
+src/gwt_agent/core/       workspace loop, attention, action resolver, trace types
+src/gwt_agent/envs/       Qiyuan adapter and replay helpers
+src/gwt_agent/llm/        mock/OpenAI/HuggingFace JSON clients
+src/gwt_agent/modules/    perception, motor, language modules
+src/gwt_agent/ui/         clickable HTML viewer generator
+tests/                    unit tests for the final scaffold
 ```
 
-The core scaffold has no third-party runtime dependencies.
+Old meeting slides, PPT files, and early research notes have been removed from
+the repo. This README is the source of truth for the current version.
 
-To run against Qiyuan's actual simulator, install the simulator-side dependency:
+## Install
+
+Core code uses only the Python standard library.
 
 ```bash
-python -m pip install -r requirements-foraging.txt
+cd /home/yx21e.fsu/AAAI_project/begining_stage
+python3 -m pip install -e .
 ```
 
-To use a sentence-transformers model instead of the built-in deterministic
-hashing encoder, install the optional encoder dependency:
+For Qiyuan's simulator integration:
 
 ```bash
-python -m pip install -r requirements-encoder.txt
+python3 -m pip install -r requirements-foraging.txt
 ```
 
-To use real OpenAI-backed LLM agents, install the optional LLM dependency and
-set your API key:
+For OpenAI-backed agents:
 
 ```bash
-python -m pip install -r requirements-llm.txt
+python3 -m pip install -r requirements-llm.txt
 export OPENAI_API_KEY=...
 ```
 
-Without the optional package/key, the integrated demo uses `mock-llm` through
-the same LLM module interface so traces and the viewer remain runnable.
-
-To use downloaded open HuggingFace models locally, install the optional
-Transformers stack:
+For local HuggingFace agents:
 
 ```bash
-python -m pip install -r requirements-hf.txt
+python3 -m pip install -r requirements-hf.txt
 ```
 
-Default HuggingFace model choices:
+On the FSU machine, the HuggingFace environment and models are intentionally
+stored under orange, not home/blue:
+
+```text
+/orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_env
+/orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
+/orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/pip-cache
+```
+
+Default local model choices:
 
 ```text
 perception: Qwen/Qwen3-VL-8B-Instruct
@@ -106,150 +113,68 @@ motor:      Qwen/Qwen3-4B-Instruct-2507
 language:   Qwen/Qwen3-4B-Instruct-2507
 ```
 
-Download them into a cache with:
+## Run Tests
 
 ```bash
-PYTHONPATH=src python scripts/download_hf_models.py \
-  --cache-dir /orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
-export HF_HOME=/orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
+PYTHONPATH=src:. python3 -m unittest discover -s tests -v
 ```
 
-The current CPU-only login environment can download these models, but local
-inference is expected to be slow without a GPU.
-
-## Qiyuan Handoff
-
-For simulator integration, Qiyuan can start from:
-
-- `unified_trace_action_schema.md`: full trace schema and replay contract.
-- `qiyuan_end_to_end_demo.md`: complete run/replay/demo plan.
-- `examples/action_stream_example.jsonl`: minimal action stream example.
-- `src/gwt_agent/envs/foraging_adapter.py`: adapter for the current
-  `ForagingEnv` state fields.
-- `scripts/run_qiyuan_integrated.py`: run Qiyuan's env with our GWT loop.
-- `scripts/replay_qiyuan_record.py`: replay a historical full trace or action stream.
-
-The action stream fields the simulator needs are:
-
-```json
-{
-  "timestamp": 0,
-  "should_step": true,
-  "action": "RIGHT",
-  "action_type": "MOVE"
-}
-```
-
-Replay rule:
-
-```python
-if record["should_step"]:
-    state = env.step(record["action"])
-else:
-    state = current_state
-```
-
-## Key Files
-
-- `src/gwt_agent/core/types.py`: shared data structures.
-- `src/gwt_agent/core/router.py`: routes different private inputs to modules.
-- `src/gwt_agent/core/importance.py`: fixed sentence-encoder importance function.
-- `src/gwt_agent/core/attention.py`: applies deterministic importance scoring before workspace.
-- `src/gwt_agent/envs/adapter.py`: environment interface for the future 2D code.
-- `src/gwt_agent/core/workspace.py`: winner-take-all central workspace with persistent state.
-- `src/gwt_agent/core/runner.py`: one-step and multi-step execution loop.
-- `src/gwt_agent/core/logger.py`: timestamp-level JSONL logger.
-- `src/gwt_agent/core/export.py`: full trace and simulator action export helpers.
-- `src/gwt_agent/core/experiment.py`: ablation/intervention config.
-- `src/gwt_agent/modules/`: perception, motor, language/report modules plus optional outcome-monitor diagnostics.
-- `src/gwt_agent/llm/`: OpenAI Responses and deterministic mock LLM client backends.
-- `src/gwt_agent/envs/mock_env.py`: minimal mock grid only for interface testing.
-- `src/gwt_agent/envs/foraging_adapter.py`: adapter for Qiyuan's foraging env.
-- `unified_trace_action_schema.md`: shared schema for full traces and action replay.
-- `module_selection_for_foraging.md`: module choices grounded in Qiyuan's env fields.
-- `pipeline_paper_alignment.md`: what is paper-derived vs. project-specific adaptation.
-
-## Run the Mock Demo
-
-```bash
-python scripts/run_mock.py
-```
-
-The demo writes:
+Expected current result:
 
 ```text
-runs/mock_trace.jsonl
+20 tests OK
 ```
 
-Each line is one timestamp containing environment state, all module proposals,
-the workspace winner, broadcast content, selected action, next environment state,
-and intervention config.
+## Run the Integrated Qiyuan Demo
 
-The trace now distinguishes:
+Qiyuan's repo is expected at:
 
 ```text
-env_t   = external simulator time
-cycle_t = internal cognitive selection-broadcast cycle
+/home/yx21e.fsu/AAAI_project/qiyuan_foraging_env
 ```
 
-The current default is semi-synchronous: one cognitive cycle normally produces
-one simulator action. The runner is structured so this can be relaxed later.
-
-To export the full standardized trace plus the minimal Qiyuan-readable action
-stream:
+Run the current mock-LLM demo:
 
 ```bash
-python scripts/export_mock_actions.py
+PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
+  --qiyuan-path /home/yx21e.fsu/AAAI_project/qiyuan_foraging_env \
+  --difficulty 2 \
+  --seed 7 \
+  --target-resources 1 \
+  --max-cycles 90 \
+  --run-id current-demo \
+  --agent-backend mock-llm \
+  --allow-non-workspace-motor
 ```
 
 This writes:
 
 ```text
-runs/mock_trace_envelopes.jsonl
-runs/mock_action_stream.jsonl
+runs/qiyuan_integrated/current-demo_summary.json
+runs/qiyuan_integrated/current-demo_trace.jsonl
+runs/qiyuan_integrated/current-demo_envelopes.jsonl
+runs/qiyuan_integrated/current-demo_actions.jsonl
+runs/qiyuan_integrated/current-demo_episode_grid.json
+runs/qiyuan_integrated/current-demo_frames/
+runs/qiyuan_integrated/current-demo_perception_inputs/
+runs/qiyuan_integrated/current-demo_viewer.html
 ```
 
-## Run With Qiyuan's Actual Environment
+The episode grid is saved once using Qiyuan's `get_grid()` API and also embedded
+in each trace state's `info.qiyuan_episode_grid`. Replay uses Qiyuan's
+`load_state(state, grid)` API when available.
 
-Clone Qiyuan's repo next to this repo and install the simulator dependency:
+## Run With HuggingFace Models
 
-```bash
-git clone https://github.com/llll0630/Foraging-Environment-Design.git ../qiyuan_foraging_env
-python -m pip install -r requirements-foraging.txt
-```
-
-Then run the integrated demo:
+Use the orange venv and cache:
 
 ```bash
-PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
-  --qiyuan-path ../qiyuan_foraging_env \
-  --difficulty 1 \
-  --seed 7 \
-  --target-resources 1 \
-  --agent-backend auto
-```
-
-`--agent-backend auto` uses OpenAI when `OPENAI_API_KEY` and the `openai`
-package are available; otherwise it falls back to `mock-llm`. To require a real
-OpenAI call, use:
-
-```bash
-PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
-  --qiyuan-path ../qiyuan_foraging_env \
-  --difficulty 1 \
-  --seed 7 \
-  --target-resources 1 \
-  --agent-backend openai \
-  --openai-model gpt-5.5 \
-  --openai-vision-model gpt-5.5
-```
-
-To run the open HuggingFace model stack:
-
-```bash
+cd /home/yx21e.fsu/AAAI_project/begining_stage
 export HF_HOME=/orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
-PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
-  --qiyuan-path ../qiyuan_foraging_env \
+
+PYTHONPATH=src /orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_env/bin/python \
+  scripts/run_qiyuan_integrated.py \
+  --qiyuan-path /home/yx21e.fsu/AAAI_project/qiyuan_foraging_env \
   --difficulty 2 \
   --seed 7 \
   --target-resources 1 \
@@ -258,227 +183,108 @@ PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
   --hf-model Qwen/Qwen3-4B-Instruct-2507
 ```
 
-This writes full traces, a minimal action stream, rendered frames, and a short
-summary under:
+The current login node reports no CUDA device, so full local inference may be
+slow unless run on a GPU node.
+
+## Clickable Viewer and Experimenter Prompt
+
+Build a static viewer for an existing run:
+
+```bash
+PYTHONPATH=src python3 scripts/build_qiyuan_viewer.py \
+  --run-id current-demo
+```
+
+Start the local interactive viewer server:
+
+```bash
+PYTHONPATH=src:. python3 scripts/serve_qiyuan_viewer.py \
+  --run-id current-demo \
+  --port 8765
+```
+
+Open:
 
 ```text
-runs/qiyuan_integrated/
+http://127.0.0.1:8765/
 ```
 
-For Qiyuan's current playback API, the run also writes the episode grid once:
+The viewer supports:
+
+- frame-by-frame replay
+- play/pause and timeline scrubber
+- workspace winner and winning output
+- every module's score, action hint, summary, and observations
+- experimenter prompt panel for pausing at a selected cycle
+
+When an experimenter prompt is submitted, the server reruns the integrated demo
+with:
 
 ```text
-runs/qiyuan_integrated/<run_id>_episode_grid.json
+--pause-language-at CYCLE=PROMPT
 ```
 
-The same grid is embedded in each trace state's `info.qiyuan_episode_grid`, so
-`trace` replay can use Qiyuan's official `load_state(state, grid)` API even when
-only the envelope JSONL is available.
+and opens a new prompt-conditioned viewer.
 
-It also writes a clickable browser viewer:
+## Replay Historical Records
 
-```text
-runs/qiyuan_integrated/<run_id>_viewer.html
-```
-
-The perception LLM receives the current map screenshot from:
-
-```text
-runs/qiyuan_integrated/<run_id>_perception_inputs/
-```
-
-To demo an experimenter pause where the user speaks directly to the language
-agent, add one or more pause prompts:
+Exact trace replay, using Qiyuan `load_state(state, grid)`:
 
 ```bash
-PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
-  --qiyuan-path ../qiyuan_foraging_env \
-  --difficulty 2 \
-  --seed 7 \
-  --target-resources 1 \
-  --agent-backend auto \
-  --pause-language-at "8=What did you just hear from the workspace?"
-```
-
-At that cognitive cycle, the language agent receives the previous broadcast,
-the user prompt, and its own recent language input/output history. Because the
-language agent has no `action_hint`, a language-winning pause cycle is logged but
-does not call Qiyuan `env.step()`.
-
-The clickable viewer's right sidebar shows each module's output language at the
-bottom of its module card, and the Workspace panel shows the winning module's
-output language for that cycle.
-
-To use the viewer as a local experimenter prompt window, serve an existing run:
-
-```bash
-PYTHONPATH=src:. python scripts/serve_qiyuan_viewer.py \
-  --run-id <run_id>
-```
-
-Then open the printed local URL. The Experimenter panel can choose a cycle,
-send a prompt to the language agent, rerun with the same run settings, and jump
-to the newly generated viewer. For HuggingFace-backed runs, start the server
-with the same Python environment used for HF inference, for example:
-
-```bash
-PYTHONPATH=src:. /orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_env/bin/python \
-  scripts/serve_qiyuan_viewer.py \
-  --run-id <run_id>
-```
-
-Default action policy is strict workspace action: if the winning broadcast has
-no `action_hint`, the cognitive cycle is logged but Qiyuan `env.step()` is not
-called. The optional motor-threshold bypass is available only when explicitly
-requested:
-
-```bash
-PYTHONPATH=src python scripts/run_qiyuan_integrated.py \
-  --qiyuan-path ../qiyuan_foraging_env \
-  --difficulty 2 \
-  --seed 7 \
-  --target-resources 1 \
-  --allow-non-workspace-motor
-```
-
-For an existing run, rebuild the viewer with:
-
-```bash
-PYTHONPATH=src python scripts/build_qiyuan_viewer.py \
-  --run-id <run_id>
-```
-
-Replay the historical record exactly:
-
-```bash
-PYTHONPATH=src python scripts/replay_qiyuan_record.py \
-  --qiyuan-path ../qiyuan_foraging_env \
+PYTHONPATH=src python3 scripts/replay_qiyuan_record.py \
+  --qiyuan-path /home/yx21e.fsu/AAAI_project/qiyuan_foraging_env \
   --mode trace \
-  --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
-  --grid runs/qiyuan_integrated/<run_id>_episode_grid.json \
-  --render-dir runs/qiyuan_integrated/<run_id>_trace_replay
+  --trace runs/qiyuan_integrated/current-demo_envelopes.jsonl \
+  --grid runs/qiyuan_integrated/current-demo_episode_grid.json \
+  --render-dir runs/qiyuan_integrated/current-demo_trace_replay
 ```
 
-Replay only the minimal action stream through Qiyuan `env.step(action)`:
+Action-stream replay, using Qiyuan `env.step(action)`:
 
 ```bash
-PYTHONPATH=src python scripts/replay_qiyuan_record.py \
-  --qiyuan-path ../qiyuan_foraging_env \
+PYTHONPATH=src python3 scripts/replay_qiyuan_record.py \
+  --qiyuan-path /home/yx21e.fsu/AAAI_project/qiyuan_foraging_env \
   --mode action \
-  --trace runs/qiyuan_integrated/<run_id>_envelopes.jsonl \
-  --actions runs/qiyuan_integrated/<run_id>_actions.jsonl \
-  --grid runs/qiyuan_integrated/<run_id>_episode_grid.json \
-  --render-dir runs/qiyuan_integrated/<run_id>_action_replay
+  --trace runs/qiyuan_integrated/current-demo_envelopes.jsonl \
+  --actions runs/qiyuan_integrated/current-demo_actions.jsonl \
+  --grid runs/qiyuan_integrated/current-demo_episode_grid.json \
+  --render-dir runs/qiyuan_integrated/current-demo_action_replay
 ```
 
-## Expected Adapter Contract for the Real 2D Environment
+Trace replay is best for slides/debugging because it restores every recorded
+state exactly. Action replay is best for proving that Qiyuan can consume our
+minimal action stream.
 
-The real adapter should convert whatever the 2D code returns into:
+## Standardized Action Stream
 
-```python
-EnvironmentState(
-    timestamp=int,
-    observation=raw_or_structured_observation,
-    symbolic_state={
-        "global_visual_observation": ...,
-        "global_map": ...,
-        "global_screenshot": ...,
-        "agent_position": ...,
-        "base_position": ...,
-        "resource_position": ...,
-        "wall_positions": ...,
-        "nearby_obstacles": ...,
-        "blocked_directions": ...,
-        "carrying_resource": ...,
-        "action_success": ...,
-        "resources_collected": ...,
-    },
-    available_actions=["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"],
-    reward=float,
-    done=bool,
-    info={
-        "experimenter_instruction": ...,
-        "report_query": optional,
-        "qiyuan_episode_grid": grid_from_env_get_grid,
-    },
-)
-```
+Each line of `<run_id>_actions.jsonl` is the minimal Qiyuan-readable action:
 
-The symbolic fields can change once the real environment arrives, but the goal is
-to keep them explicit enough that modules and trace analysis can read them.
-
-## Design Defaults
-
-- Modules do not receive identical full information.
-- Each module receives a module-specific `ModuleInput`:
-  - private observation / private state
-  - last global broadcast
-  - persistent workspace state
-  - task goal and experiment config
-- Module proposals are structured; natural language is just one possible field.
-- The perception module is conceptually multimodal: global bird's-eye map /
-  screenshot plus symbolic state. It is not routed a local neighborhood view in
-  the default boss-aligned pipeline.
-- Importance is not self-reported by modules. A fixed scorer computes bottom-up
-  salience and top-down relevance with a sentence-encoder style interface.
-- The first workspace policy is all-or-none ignition with a configurable threshold.
-- If no proposal crosses the ignition threshold, the previous workspace content
-  is maintained for several steps and decays over time.
-- If the broadcast asks for an action, the resolver executes it. Separately, a
-  high-importance motor proposal can execute through the non-workspace motor route.
-- Ablations are centralized in `ExperimentConfig`, not scattered inside modules.
-
-## First-Version Module Set
-
-Grounded in Qiyuan's current environment fields and our need for an outward
-report channel, the recommended first-version modules are:
-
-```python
-[
-    LLMPerceptionModule(),    # multimodal global map screenshot + symbolic state
-    LLMMotorModule(),         # UP/DOWN/LEFT/RIGHT/PICKUP proposal
-    LLMLanguageModule(),      # report to the experimenter, not the simulator
-]
-```
-
-For a pure navigation/control baseline, perception + motor is enough.
-`LLMLanguageModule` reads experimenter instructions/report queries and the
-internal workspace broadcast, then acts as the system's spokesperson to the
-experimenter. Qiyuan's current environment does not provide language/report/query
-fields by itself, so `scripts/run_qiyuan_integrated.py` can inject a demo query
-with `--report-query-every N`. `OutcomeMonitorModule` is
-optional for explicit feedback/agency/intervention experiments. We do not
-include a literal emotion module in the first version; if we later need that
-role, it should be a `Value` or `SalienceEvaluation` module.
-
-## Qiyuan Foraging Environment Action Contract
-
-Qiyuan's simulator accepts only:
-
-```text
-UP, DOWN, LEFT, RIGHT, PICKUP
-```
-
-There is no simulator-side `NOOP` or `WAIT`. Our standardized `EnvAction`
-therefore includes:
-
-```python
+```json
 {
-    "command": "RIGHT",
-    "should_step": True
+  "schema_version": "gwt_trace_v1",
+  "run_id": "current-demo",
+  "timestamp": 1,
+  "should_step": true,
+  "action": "DOWN",
+  "action_type": "MOVE",
+  "direction": "DOWN",
+  "confidence": 0.76,
+  "source_module": "motor",
+  "source_timestamp": 1
 }
 ```
 
-or, for no movement:
+Qiyuan-side replay rule:
 
 ```python
-{
-    "command": None,
-    "should_step": False
-}
+if record["should_step"]:
+    state = env.step(record["action"])
+else:
+    # Qiyuan has no NOOP/WAIT action; keep current simulator state.
+    state = current_state
 ```
 
-Qiyuan-side exact trace replay should use Qiyuan's playback API:
+For exact visual replay:
 
 ```python
 grid = json.load(open("<run_id>_episode_grid.json"))
@@ -486,26 +292,48 @@ env.load_state(step_record["env_state"]["observation"], grid)
 env.render(...)
 ```
 
-Minimal action-stream replay should use:
+## Current Expected Behavior
 
-```python
-if record["should_step"]:
-    state = env.step(record["action"])
-else:
-    state = current_state
+With the current mock demo command above:
+
+```text
+done: true
+resources_collected: 1
+workspace winners: perception and motor both appear
+motor private resource/base leaks: 0
 ```
 
-## Dependency Notes
+The motor module no longer receives target coordinates privately. Perception
+must broadcast global target information before motor can use it. Some movement
+may still execute through the non-workspace motor threshold when that route is
+explicitly enabled.
 
-- Core package: Python standard library only.
-- Test runner: Python standard library `unittest`.
-- Qiyuan simulator integration: requires `pygame`, declared in
-  `requirements-foraging.txt` and the optional package extra `.[foraging]`.
-- Real OpenAI-backed LLM agents: requires `openai`, declared in
-  `requirements-llm.txt` and the optional package extra `.[llm]`.
-- Local HuggingFace open-model agents: requires `torch`, `torchvision`,
-  `transformers`, `accelerate`, and `pillow`, declared in `requirements-hf.txt`
-  and the optional package extra `.[hf]`.
+## What to Avoid Claiming
+
+- Do not claim a biologically faithful GNW implementation.
+- Do not claim true parallel module execution; modules are evaluated
+  sequentially but treated as same-cycle proposals.
+- Do not claim learned latent workspace representations; the workspace message
+  format is structured JSON/natural language for debugging and replay.
+- Do not claim the automatic motor route is the workspace. It is logged as a
+  separate route for automatic/non-workspace action experiments.
+
+## Useful Commands
+
+```bash
+# Unit tests
+PYTHONPATH=src:. python3 -m unittest discover -s tests -v
+
+# Mock interface demo
+PYTHONPATH=src python3 scripts/run_mock.py
+
+# Export mock action stream
+PYTHONPATH=src python3 scripts/export_mock_actions.py
+
+# Download default HF models into orange cache
+PYTHONPATH=src python3 scripts/download_hf_models.py \
+  --cache-dir /orange/fsu-compsci-dept/yx21e.fsu/AAAI_project/hf_home
+```
 
 ## License
 
