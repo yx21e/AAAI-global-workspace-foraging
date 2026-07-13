@@ -13,10 +13,11 @@ from gwt_agent.modules.llm_agents import LLMLanguageModule, LLMMotorModule, LLMP
 class LLMAgentTest(unittest.TestCase):
     def test_parse_json_object_from_fenced_output(self):
         parsed = parse_json_object(
-            '```json\n{"summary":"ok","observations":[],"confidence":0.5,"action_hint":null,"rationale":"done"}\n```'
+            '```json\n{"summary":"ok","observations":[],"confidence":0.5,"action_hint":null,"rationale":"done","reflection":"brief self-check"}\n```'
         )
 
         self.assertEqual(parsed["summary"], "ok")
+        self.assertEqual(parsed["reflection"], "brief self-check")
 
     def test_multimodal_perception_uses_screenshot_path(self):
         module = LLMPerceptionModule(client=MockLLMClient())
@@ -39,6 +40,7 @@ class LLMAgentTest(unittest.TestCase):
 
         self.assertEqual(proposal.module_name, "perception")
         self.assertIsNone(proposal.action_hint)
+        self.assertIn("I see the agent", proposal.reflection)
         self.assertEqual(
             proposal.metadata["llm_agent"]["image_path"],
             "/tmp/map.png",
@@ -72,6 +74,7 @@ class LLMAgentTest(unittest.TestCase):
 
         self.assertEqual(proposal.module_name, "motor")
         self.assertIn(proposal.action_hint, {"RIGHT", "DOWN", "LEFT", "PICKUP", "NOOP"})
+        self.assertIn("blocked directions", proposal.reflection)
 
     def test_language_llm_never_emits_simulator_action(self):
         module = LLMLanguageModule(client=MockLLMClient())
@@ -92,6 +95,7 @@ class LLMAgentTest(unittest.TestCase):
         self.assertEqual(proposal.module_name, "language")
         self.assertIsNone(proposal.action_hint)
         self.assertIn("Experimenter query", proposal.content["summary"])
+        self.assertIn("experimenter-facing", proposal.reflection)
 
     def test_language_pause_prompt_uses_history(self):
         module = LLMLanguageModule(client=MockLLMClient())

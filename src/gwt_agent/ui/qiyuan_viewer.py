@@ -110,6 +110,7 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
             "language_report": None,
             "reasoning": {
                 "winner_rationale": "",
+                "winner_reflection": "",
                 "score_basis": "Initial frame before module proposals.",
                 "ignition_basis": "",
                 "action_basis": "No simulator action has been selected yet.",
@@ -142,6 +143,7 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
                     "action_hint": proposal.get("action_hint"),
                     "output_language": output_language,
                     "rationale": proposal.get("rationale") or "",
+                    "reflection": proposal.get("reflection") or "",
                     "importance_function": (proposal.get("metadata") or {}).get("importance_function") or {},
                 }
             )
@@ -228,6 +230,11 @@ def reasoning_payload(
         or broadcast_metadata.get("winner_rationale")
         or fallback_rationale(workspace)
     )
+    reflection = (
+        (winner_row or {}).get("reflection")
+        or broadcast_metadata.get("winner_reflection")
+        or fallback_reflection(workspace)
+    )
     score_value = (
         (winner_row or {}).get("importance")
         if winner_row is not None
@@ -235,6 +242,7 @@ def reasoning_payload(
     )
     return {
         "winner_rationale": rationale,
+        "winner_reflection": reflection,
         "score_basis": score_basis_text(score_value, importance_function),
         "ignition_basis": ignition_basis_text(workspace),
         "action_basis": action_basis_text(action, action_metadata, winner),
@@ -246,6 +254,14 @@ def fallback_rationale(workspace: dict) -> str:
         return "No new proposal crossed threshold; the previous broadcast is maintained with decay."
     if workspace.get("ignited") is False:
         return "No proposal crossed the ignition threshold in this cycle."
+    return ""
+
+
+def fallback_reflection(workspace: dict) -> str:
+    if workspace.get("maintained"):
+        return "The active workspace content is being carried forward because no new proposal ignited."
+    if workspace.get("ignited") is False:
+        return "No module proposal became globally broadcast in this cycle."
     return ""
 
 
@@ -584,7 +600,8 @@ HTML_TEMPLATE = r"""<!doctype html>
       overflow-wrap: anywhere;
       white-space: pre-wrap;
     }
-    .module-rationale {
+    .module-rationale,
+    .module-reflection {
       display: grid;
       grid-template-columns: 72px minmax(0, 1fr);
       gap: 8px;
@@ -594,7 +611,11 @@ HTML_TEMPLATE = r"""<!doctype html>
       overflow-wrap: anywhere;
       white-space: pre-wrap;
     }
-    .module-rationale span {
+    .module-reflection {
+      padding-top: 2px;
+    }
+    .module-rationale span,
+    .module-reflection span {
       color: var(--muted);
     }
     @media (max-width: 920px) {
@@ -749,6 +770,7 @@ HTML_TEMPLATE = r"""<!doctype html>
           </div>
           <div class="module-output">${html(row.output_language)}</div>
           <div class="module-rationale"><span>rationale</span>${html(row.rationale)}</div>
+          <div class="module-reflection"><span>reflection</span>${html(row.reflection)}</div>
         </div>`;
       }).join('');
     }
@@ -757,6 +779,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       const reasoning = step.reasoning || {};
       kv(document.getElementById('reasoningPanel'), [
         ['winner rationale', reasoning.winner_rationale],
+        ['winner reflection', reasoning.winner_reflection],
         ['score basis', reasoning.score_basis],
         ['ignition', reasoning.ignition_basis],
         ['action route', reasoning.action_basis],

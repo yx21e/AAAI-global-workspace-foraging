@@ -59,6 +59,11 @@ class LanguageReportModule(BaseModule):
                 if report_query
                 else "Keep the report channel available without restating the task goal."
             ),
+            reflection=(
+                f"I am tracking the latest broadcast for the experimenter. "
+                f"report_requested={bool(report_query)}; instruction={instruction}; "
+                "I should speak outward only when queried or paused, and I should not emit simulator actions."
+            ),
             metadata={
                 "report_type": "experimenter_spokesperson",
                 "experimenter_instruction": instruction,

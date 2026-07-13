@@ -61,6 +61,13 @@ class MotorModule(BaseModule):
             salience_score=0.55,
             goal_relevance_score=0.85,
             rationale="Move one step toward the current task target while avoiding known hazards.",
+            reflection=(
+                f"I am at {agent_pos} with goal={goal}. The target source is "
+                f"{'workspace_broadcast' if target is not None else 'unavailable'} and target={target}. "
+                f"Blocked directions are {blocked_directions}; I chose {action} as the next local action. "
+                "If this action points into a wall, the blocked-direction input and Qiyuan transition "
+                "should be compared for this frame."
+            ),
         )
 
     def _choose_action(

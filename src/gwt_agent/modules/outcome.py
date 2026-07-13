@@ -29,6 +29,10 @@ class OutcomeMonitorModule(BaseModule):
                 salience_score=0.85,
                 goal_relevance_score=0.75,
                 rationale="Failed action should be globally available for replanning and self-monitoring.",
+                reflection=(
+                    "The last environment action failed. This likely matters for replanning, "
+                    "so I should broadcast failure feedback rather than propose a movement."
+                ),
             )
 
         return ModuleProposal(
@@ -44,4 +48,8 @@ class OutcomeMonitorModule(BaseModule):
             salience_score=0.3,
             goal_relevance_score=0.55,
             rationale="Track progress feedback without forcing an action.",
+            reflection=(
+                f"Task progress is resources_collected={collected}, carrying_resource={carrying}, "
+                f"last_action_success={action_success}. I should monitor outcome changes, not command the simulator."
+            ),
         )

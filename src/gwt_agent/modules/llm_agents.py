@@ -48,6 +48,7 @@ class LLMModule(BaseModule):
             confidence=clamp_float(response.get("confidence"), default=0.5),
             action_hint=action_hint,
             rationale=str(response.get("rationale") or ""),
+            reflection=str(response.get("reflection") or ""),
             metadata={
                 "llm_agent": {
                     "backend": getattr(self.client, "provider_name", self.client.__class__.__name__),
@@ -73,6 +74,12 @@ class LLMModule(BaseModule):
             "workspace_state": to_jsonable(module_input.workspace_state),
             "output_contract": {
                 "importance_score": "Do not provide it; fixed deterministic scorer computes it after your reply.",
+                "reflection": (
+                    "A brief reportable self-explanation of how this module currently "
+                    "understands the situation, what it is inclined to do, and any "
+                    "uncertainty or constraint. Do not expose hidden chain-of-thought; "
+                    "write a concise diagnostic reflection."
+                ),
                 "action_hint": (
                     "Only motor may use UP, DOWN, LEFT, RIGHT, PICKUP, or NOOP. "
                     "Perception and language must return null."
@@ -174,7 +181,9 @@ class LLMMotorModule(LLMModule):
                 "the current agent position is at that target. If no target/action cue is "
                 "available in the broadcast, return NOOP unless a local safety reflex is "
                 "needed. Use your recent position history to avoid short oscillations when "
-                "another safe step is available. Return only JSON matching the schema."
+                "another safe step is available. In reflection, explicitly mention the "
+                "target source, blocked directions, and why the chosen action is considered "
+                "safe. Return only JSON matching the schema."
             ),
         )
 
@@ -286,6 +295,7 @@ def proposal_response_schema() -> dict:
                 ]
             },
             "rationale": {"type": "string"},
+            "reflection": {"type": "string"},
         },
         "required": [
             "summary",
@@ -293,6 +303,7 @@ def proposal_response_schema() -> dict:
             "confidence",
             "action_hint",
             "rationale",
+            "reflection",
         ],
     }
 

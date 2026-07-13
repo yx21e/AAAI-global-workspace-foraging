@@ -61,6 +61,7 @@ class CentralWorkspace:
             metadata={
                 **winner.metadata,
                 "winner_rationale": winner.rationale,
+                "winner_reflection": winner.reflection,
                 "workspace": {
                     "ignited": True,
                     "ignition_threshold": self.ignition_threshold,

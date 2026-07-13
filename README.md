@@ -24,7 +24,7 @@ Qiyuan ForagingEnv
   -> specialized modules produce ModuleProposal objects
      perception may use a multimodal model
      motor/language may use text-only models
-     each proposal includes output language, action_hint, confidence, and rationale
+     each proposal includes output language, action_hint, confidence, rationale, and reflection
   -> deterministic AttentionGate
      bottom-up salience = private-input change
      top-down relevance = proposal similarity to task goal + previous broadcast
@@ -50,8 +50,8 @@ Important implementation boundaries:
   actions to Qiyuan.
 - The non-workspace motor route is off by default. When enabled, it represents
   an automatic/local action route and is logged separately from workspace actions.
-- The viewer's reasoning display is a concise decision-basis audit. It is not a
-  hidden chain-of-thought trace.
+- The viewer's reasoning display is a concise decision-basis audit plus
+  reportable module reflections. It is not a hidden chain-of-thought trace.
 - By default there is no winner-balancing rule: no perception/motor alternation,
   no winner quota, and no viewer-driven broadcast schedule.
 
@@ -234,9 +234,9 @@ The viewer supports:
 - frame-by-frame replay
 - play/pause and timeline scrubber
 - workspace winner and winning output
-- reasoning panel with winner rationale, score basis, ignition basis, and action route
+- reasoning panel with winner rationale/reflection, score basis, ignition basis, and action route
 - every module's score, action hint, summary, and observations
-- every module's concise rationale
+- every module's concise rationale and reflection
 - experimenter prompt panel for pausing at a selected cycle
 
 When an experimenter prompt is submitted, the server reruns the integrated demo
@@ -248,19 +248,33 @@ with:
 
 and opens a new prompt-conditioned viewer.
 
-## Reasoning Display
+## Reasoning and Reflection Display
 
-The current system already records a `rationale` field for each
-`ModuleProposal`. The viewer now surfaces that field in two places:
+Each `ModuleProposal` records two explanation fields:
 
-- each module card shows the module's own concise rationale
-- the right-side Reasoning panel summarizes the workspace winner's rationale,
-  the deterministic importance-score breakdown, the ignition/maintenance
-  decision, and the action route used by `ActionResolver`
+- `rationale`: a short reason why this module produced its proposal
+- `reflection`: a reportable self-explanation of how the module currently
+  understands the situation, what it is inclined to do, and which constraints or
+  uncertainties matter
 
-This should be described as **reportable decision basis**, not full internal
-reasoning. The deterministic scoring terms remain external to the modules:
-modules do not set their own importance scores.
+The viewer surfaces both fields. Each module card shows the module's rationale
+and reflection. The right-side Reasoning panel summarizes the workspace winner's
+rationale/reflection, the deterministic importance-score breakdown, the
+ignition/maintenance decision, and the action route used by `ActionResolver`.
+
+This is useful for debugging odd transitions. For example, if a frame appears
+to move left into a wall, inspect:
+
+- `action route` and `source_module` to see which module actually caused the
+  simulator action
+- the motor module's `reflection` for its target source, blocked directions,
+  and why it considered the action safe
+- the perception module's `reflection` to confirm that perception reported
+  global spatial context but did not emit a simulator action
+
+This should be described as **reportable decision basis and module
+self-report**, not full internal reasoning. The deterministic scoring terms
+remain external to the modules: modules do not set their own importance scores.
 
 ## Replay Historical Records
 
@@ -352,7 +366,8 @@ explicitly enabled.
 - Do not claim learned latent workspace representations; the workspace message
   format is structured JSON/natural language for debugging and replay.
 - Do not claim access to full hidden model reasoning or chain-of-thought; only
-  concise module rationales and deterministic score metadata are logged.
+  concise module rationales, reportable reflections, and deterministic score
+  metadata are logged.
 - Do not claim the automatic motor route is the workspace. It is logged as a
   separate route for automatic/non-workspace action experiments.
 

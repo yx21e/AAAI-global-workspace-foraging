@@ -39,6 +39,7 @@ class ExperimentConfig:
             confidence=proposal.confidence,
             action_hint=proposal.action_hint,
             rationale=proposal.rationale,
+            reflection=proposal.reflection,
             salience_score=proposal.salience_score,
             goal_relevance_score=proposal.goal_relevance_score,
             uptake_score=proposal.uptake_score * factor

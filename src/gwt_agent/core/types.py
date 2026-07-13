@@ -152,6 +152,7 @@ class ModuleProposal:
     confidence: Optional[float] = None
     action_hint: Optional[str] = None
     rationale: str = ""
+    reflection: str = ""
     salience_score: Optional[float] = None
     goal_relevance_score: Optional[float] = None
     uptake_score: Optional[float] = None

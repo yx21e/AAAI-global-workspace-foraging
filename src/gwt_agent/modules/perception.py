@@ -36,6 +36,11 @@ class PerceptionModule(BaseModule):
                 salience_score=0.75,
                 goal_relevance_score=0.75,
                 rationale="Global visual map and symbolic state are available for multimodal perception.",
+                reflection=(
+                    f"I see the agent at {agent_pos}, the resource at {resource_pos}, "
+                    f"and {len(walls)} known walls. I should broadcast the global map context; "
+                    "I do not choose simulator actions."
+                ),
             )
 
         return ModuleProposal(
@@ -51,4 +56,8 @@ class PerceptionModule(BaseModule):
             salience_score=0.45,
             goal_relevance_score=0.6,
             rationale="Use symbolic state when no global visual input is available.",
+            reflection=(
+                f"I only have symbolic coordinates: agent={agent_pos}, resource={resource_pos}, "
+                f"known_wall_count={len(walls)}. I can report spatial context but should not emit movement."
+            ),
         )

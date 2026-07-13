@@ -61,6 +61,7 @@ class QiyuanViewerTest(unittest.TestCase):
                     },
                     "metadata": {
                         "winner_rationale": "Workspace winner rationale appears here.",
+                        "winner_reflection": "Workspace winner reflection appears here.",
                         "importance_function": {
                             "bottom_up_salience": 0.5,
                             "top_down_relevance": 0.8,
@@ -90,6 +91,7 @@ class QiyuanViewerTest(unittest.TestCase):
                                 "summary": "Motor output language appears here.",
                             },
                             "rationale": "Module-level motor rationale appears here.",
+                            "reflection": "Module-level motor reflection appears here.",
                             "metadata": {
                                 "importance_function": {
                                     "bottom_up_salience": 0.5,
@@ -124,6 +126,8 @@ class QiyuanViewerTest(unittest.TestCase):
             self.assertIn("Motor output language appears here.", html)
             self.assertIn("Reasoning", html)
             self.assertIn("Module-level motor rationale appears here.", html)
+            self.assertIn("Module-level motor reflection appears here.", html)
+            self.assertIn("winner reflection", html)
             self.assertIn("score basis", html)
             self.assertIn("Experimenter", html)
             self.assertIn("sendPromptBtn", html)

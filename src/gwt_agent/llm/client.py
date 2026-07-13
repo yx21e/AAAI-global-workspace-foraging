@@ -61,6 +61,7 @@ class MockLLMClient:
             "confidence": 0.2,
             "action_hint": None,
             "rationale": "Unknown mock agent.",
+            "reflection": "I do not have a configured module role, so I cannot form a task-specific interpretation.",
         }
 
     def _perception_response(
@@ -80,6 +81,10 @@ class MockLLMClient:
                 "confidence": 0.55,
                 "action_hint": None,
                 "rationale": "Avoid re-igniting unchanged perceptual content when the prior broadcast already carried it.",
+                "reflection": (
+                    "The global map looks consistent with the previous perceptual broadcast. "
+                    "I should keep monitoring for visual changes but I should not suggest a simulator action."
+                ),
             }
         walls = state.get("wall_positions") or []
         screenshot = image_path or state.get("global_screenshot")
@@ -103,6 +108,11 @@ class MockLLMClient:
             "confidence": 0.72,
             "action_hint": None,
             "rationale": "Perception reports salient visual-spatial state but does not command the simulator.",
+            "reflection": (
+                f"I see the agent at {agent}, the resource at {resource}, and the base at {base}. "
+                "My role is to broadcast this global spatial context so motor can plan; "
+                "I am not issuing a movement command."
+            ),
         }
 
     def _motor_response(self, user_payload: JsonDict) -> JsonDict:
@@ -150,7 +160,13 @@ class MockLLMClient:
                     "The motor center only has local obstacle information and has not "
                     "received a global target through the workspace broadcast."
                 ),
+                "reflection": (
+                    f"I am at {agent_pos} and only know local blocked directions {blocked}. "
+                    "No resource/base target has been broadcast to me, so moving would be unguided; "
+                    "I will hold with NOOP."
+                ),
             }
+        is_blocked = bool(blocked.get(action))
         return {
             "summary": (
                 f"Motor proposes {action}; goal={goal}; target={target_text}; "
@@ -170,6 +186,12 @@ class MockLLMClient:
             "rationale": (
                 "Choose the next simulator action using nearby obstacle constraints "
                 "and target information available from the workspace broadcast."
+            ),
+            "reflection": (
+                f"I am at {agent_pos}, pursuing {goal}, and using the broadcast target {target_text}. "
+                f"Local blocked directions are {blocked}; proposed action {action} has blocked={is_blocked}. "
+                "If this action still fails in the environment, the mismatch should be inspected in the "
+                "motor blocked-direction input or simulator transition."
             ),
         }
 
@@ -222,6 +244,10 @@ class MockLLMClient:
             "confidence": confidence,
             "action_hint": None,
             "rationale": "Language reports to the experimenter, not to the 2D simulator.",
+            "reflection": (
+                f"I heard the latest broadcast as {broadcast_summary}. "
+                "My role is to keep an experimenter-facing verbal account and not to control movement."
+            ),
         }
 
 

@@ -50,6 +50,7 @@ class AttentionGate:
                     confidence=proposal.confidence,
                     action_hint=proposal.action_hint,
                     rationale=proposal.rationale,
+                    reflection=proposal.reflection,
                     salience_score=importance.salience,
                     goal_relevance_score=importance.relevance,
                     uptake_score=uptake,
