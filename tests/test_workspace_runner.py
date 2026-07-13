@@ -16,7 +16,7 @@ from gwt_agent.core.workspace import CentralWorkspace
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
 from gwt_agent.envs.mock_env import MockGridAdapter
 from gwt_agent.modules.language import LanguageReportModule
-from gwt_agent.modules.motor import MotorModule
+from gwt_agent.modules.motor import MotorModule, extract_positions_from_broadcast
 from gwt_agent.modules.perception import PerceptionModule
 
 
@@ -99,6 +99,147 @@ class WorkspaceRunnerTest(unittest.TestCase):
 
         self.assertEqual(winners, ["motor", "motor"])
 
+    def test_motor_broadcast_does_not_carry_spatial_targets_forward(self):
+        workspace = CentralWorkspace(ignition_threshold=0.1)
+        proposal = ModuleProposal(
+            module_name="motor",
+            content={
+                "summary": "Motor proposes LEFT; target=(1, 9); cue_source=workspace_broadcast.",
+                "goal": "collect_resource",
+                "resource_position": (1, 9),
+                "base_position": (1, 1),
+                "target_position": (1, 9),
+                "observations": [
+                    "agent_position=(2, 4)",
+                    "resource_position=(1, 9)",
+                    "base_position=(1, 1)",
+                    "target_position=(1, 9)",
+                    "target_source=workspace_broadcast",
+                    "blocked_directions={'LEFT': False}",
+                ],
+            },
+            importance_score=0.8,
+            uptake_score=0.8,
+            action_hint="LEFT",
+            rationale="Use target_position=(1, 9) from the prior broadcast.",
+            reflection="I am using the broadcast target (1, 9) and base (1, 1).",
+        )
+
+        broadcast = workspace.broadcast(0, proposal)
+
+        extracted = extract_positions_from_broadcast(broadcast)
+        self.assertNotIn("resource_position", extracted)
+        self.assertNotIn("base_position", extracted)
+        self.assertNotIn("target_position", extracted)
+        self.assertNotIn("resource_position", broadcast.content)
+        self.assertNotIn("base_position", broadcast.content)
+        self.assertNotIn("target_position", broadcast.content)
+        self.assertNotIn("resource_position=", "\n".join(broadcast.content["observations"]))
+        self.assertNotIn("base_position=", "\n".join(broadcast.content["observations"]))
+        self.assertNotIn("target_position=", "\n".join(broadcast.content["observations"]))
+        self.assertIn("spatial_target_redaction", broadcast.metadata)
+        self.assertIn("<redacted>", broadcast.metadata["winner_reflection"])
+
+    def test_motor_action_hint_is_transient_not_workspace_memory(self):
+        workspace = CentralWorkspace(ignition_threshold=0.1)
+        proposal = ModuleProposal(
+            module_name="motor",
+            content={
+                "summary": "Motor proposes LEFT; target=(1, 9); cue_source=workspace_broadcast.",
+                "planned_action": "LEFT",
+                "target_position": (1, 9),
+                "observations": [
+                    "planned_action=LEFT",
+                    "target_position=(1, 9)",
+                    "blocked_directions={'LEFT': False}",
+                ],
+            },
+            importance_score=0.8,
+            uptake_score=0.8,
+            action_hint="LEFT",
+            rationale="Choose the proposed action LEFT.",
+            reflection="I chose LEFT because the broadcast target is (1, 9).",
+        )
+
+        broadcast = workspace.broadcast(0, proposal)
+        memory = workspace.state.active_content
+
+        self.assertEqual(broadcast.action_hint, "LEFT")
+        self.assertIsNotNone(memory)
+        self.assertIsNone(memory.action_hint)
+        self.assertNotIn("planned_action", memory.content)
+        self.assertNotIn("target_position", memory.content)
+        self.assertNotIn("Motor proposes LEFT", memory.content["summary"])
+        self.assertNotIn("planned_action=LEFT", "\n".join(memory.content["observations"]))
+        self.assertIn("transient_action_redaction", memory.metadata)
+
+    def test_motor_noop_is_not_globally_uploadable(self):
+        workspace = CentralWorkspace(ignition_threshold=0.1)
+        proposals = [
+            ModuleProposal(
+                module_name="motor",
+                content={"summary": "No target; motor holds position."},
+                importance_score=0.9,
+                uptake_score=0.9,
+                action_hint="NOOP",
+            ),
+            ModuleProposal(
+                module_name="perception",
+                content={"summary": "Visual target refresh."},
+                importance_score=0.2,
+                uptake_score=0.2,
+            ),
+        ]
+
+        winner = workspace.select_winner(proposals)
+
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.module_name, "perception")
+
+    def test_idle_language_is_not_globally_uploadable(self):
+        workspace = CentralWorkspace(ignition_threshold=0.1)
+        proposals = [
+            ModuleProposal(
+                module_name="language",
+                content={"summary": "No report requested."},
+                importance_score=0.9,
+                uptake_score=0.9,
+            ),
+            ModuleProposal(
+                module_name="perception",
+                content={"summary": "Visual target refresh."},
+                importance_score=0.2,
+                uptake_score=0.2,
+            ),
+        ]
+
+        winner = workspace.select_winner(proposals)
+
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.module_name, "perception")
+
+    def test_report_language_can_be_globally_uploadable(self):
+        workspace = CentralWorkspace(ignition_threshold=0.1)
+        proposals = [
+            ModuleProposal(
+                module_name="language",
+                content={"summary": "Answering experimenter.", "report_requested": True},
+                importance_score=0.9,
+                uptake_score=0.9,
+            ),
+            ModuleProposal(
+                module_name="perception",
+                content={"summary": "Visual target refresh."},
+                importance_score=0.2,
+                uptake_score=0.2,
+            ),
+        ]
+
+        winner = workspace.select_winner(proposals)
+
+        self.assertIsNotNone(winner)
+        self.assertEqual(winner.module_name, "language")
+
     def test_action_stream_export(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             action_path = Path(temp_dir) / "actions.jsonl"
@@ -127,27 +268,41 @@ class WorkspaceRunnerTest(unittest.TestCase):
             self.assertEqual(records[0]["should_step"], envelopes[0].env_action.should_step)
 
     def test_motor_threshold_route_does_not_execute_noop_without_target(self):
-        runner = WorkspaceRunner(
-            env_adapter=MockGridAdapter(),
-            modules=make_modules(),
-            experiment=ExperimentConfig(
+        resolver = ActionResolver(
+            ExperimentConfig(
                 allow_non_workspace_motor_action=True,
                 motor_execution_threshold=0.02,
-                ignition_threshold=0.25,
-                score_modifiers={"language_report": 10.0},
-            ),
+            )
         )
-
-        traces = runner.run(num_steps=8)
-        threshold_steps = [
-            trace
-            for trace in traces
-            if trace.env_action
-            and trace.env_action.metadata.get("action_route")
-            == "non_workspace_motor_threshold"
+        broadcast = WorkspaceBroadcast(
+            timestamp=0,
+            winner_module="perception",
+            content={"summary": "Visual content won, but it gives no action."},
+            importance_score=0.5,
+            action_hint=None,
+        )
+        proposals = [
+            ModuleProposal(
+                module_name="perception",
+                content={"summary": "Visual content won, but it gives no action."},
+                importance_score=0.5,
+                action_hint=None,
+            ),
+            ModuleProposal(
+                module_name="motor",
+                content={"summary": "No target; motor holds position."},
+                importance_score=0.9,
+                uptake_score=0.9,
+                confidence=0.7,
+                action_hint="NOOP",
+            ),
         ]
 
-        self.assertFalse(threshold_steps)
+        action = resolver.resolve(broadcast, proposals)
+
+        self.assertFalse(action.should_step)
+        self.assertIsNone(action.command)
+        self.assertEqual(action.metadata.get("action_route"), "no_action_threshold_not_met")
 
     def test_motor_threshold_route_can_execute_real_motor_action(self):
         resolver = ActionResolver(
@@ -189,18 +344,41 @@ class WorkspaceRunnerTest(unittest.TestCase):
             "non_workspace_motor_threshold",
         )
 
+    def test_maintained_motor_broadcast_does_not_reexecute_old_action(self):
+        resolver = ActionResolver(ExperimentConfig())
+        maintained_broadcast = WorkspaceBroadcast(
+            timestamp=5,
+            winner_module="motor",
+            content={"summary": "Old motor content is still maintained."},
+            importance_score=0.4,
+            action_hint="DOWN",
+            metadata={
+                "workspace": {
+                    "ignited": False,
+                    "maintained": True,
+                    "strength": 0.85,
+                }
+            },
+        )
+
+        action = resolver.resolve(maintained_broadcast, proposals=[])
+
+        self.assertFalse(action.should_step)
+        self.assertIsNone(action.command)
+        self.assertEqual(action.metadata.get("action_route"), "no_workspace_action")
+
     def test_default_no_action_when_workspace_winner_has_no_action(self):
         runner = WorkspaceRunner(
             env_adapter=MockGridAdapter(),
             modules=make_modules(),
             experiment=ExperimentConfig(
-                score_modifiers={"language_report": 10.0},
+                score_modifiers={"perception": 10.0},
             ),
         )
 
         trace = runner.step()
 
-        self.assertEqual(trace.broadcast.winner_module, "language_report")
+        self.assertEqual(trace.broadcast.winner_module, "perception")
         self.assertFalse(trace.env_action.should_step)
         self.assertIsNone(trace.env_action.command)
         self.assertEqual(

@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import re
+from copy import deepcopy
 from typing import Iterable, List, Optional
 
 from gwt_agent.core.types import ModuleProposal, WorkspaceBroadcast, WorkspaceState
+
+
+TARGET_KEYS = {"resource_position", "base_position", "target_position"}
+TARGET_TEXT_KEYS = {"resource", "base", "target"}
+TRANSIENT_ACTION_KEYS = {"planned_action", "action", "action_hint", "command", "direction"}
+TRANSIENT_ACTIONS = r"(?:UP|DOWN|LEFT|RIGHT|PICKUP|NOOP|WAIT|STAY|NONE)"
 
 
 class CentralWorkspace:
@@ -26,6 +34,11 @@ class CentralWorkspace:
         proposal_list: List[ModuleProposal] = list(proposals)
         if not proposal_list:
             raise ValueError("CentralWorkspace requires at least one proposal.")
+        proposal_list = [
+            proposal for proposal in proposal_list if is_globally_uploadable(proposal)
+        ]
+        if not proposal_list:
+            return None
         winner = max(
             proposal_list,
             key=lambda proposal: (
@@ -51,26 +64,23 @@ class CentralWorkspace:
             return self._maintain_or_idle(timestamp)
 
         score = winner.uptake_score if winner.uptake_score is not None else winner.importance_score
+        metadata = global_metadata_for_winner(winner)
+        metadata["workspace"] = {
+            "ignited": True,
+            "ignition_threshold": self.ignition_threshold,
+            "maintained": False,
+            "strength": 1.0,
+        }
         broadcast = WorkspaceBroadcast(
             timestamp=timestamp,
             winner_module=winner.module_name,
-            content=winner.content,
+            content=global_content_for_winner(winner),
             importance_score=score,
             confidence=winner.confidence,
             action_hint=winner.action_hint,
-            metadata={
-                **winner.metadata,
-                "winner_rationale": winner.rationale,
-                "winner_reflection": winner.reflection,
-                "workspace": {
-                    "ignited": True,
-                    "ignition_threshold": self.ignition_threshold,
-                    "maintained": False,
-                    "strength": 1.0,
-                },
-            },
+            metadata=metadata,
         )
-        self.state.update(broadcast, strength=1.0)
+        self.state.update(memory_broadcast_for_context(broadcast), strength=1.0)
         return broadcast
 
     def _maintain_or_idle(self, timestamp: int) -> WorkspaceBroadcast:
@@ -110,3 +120,203 @@ class CentralWorkspace:
                 },
             },
         )
+
+
+def is_globally_uploadable(proposal: ModuleProposal) -> bool:
+    module_name = str(proposal.module_name).lower()
+    action_hint = str(proposal.action_hint or "").upper()
+    if module_name.startswith("motor") and action_hint in {"NOOP", "WAIT", "STAY", "NONE"}:
+        return False
+    if "language" in module_name or "report" in module_name:
+        content = proposal.content if isinstance(proposal.content, dict) else {}
+        if proposal.metadata.get("language_uploadable"):
+            return True
+        if content.get("report_requested"):
+            return True
+        return False
+    return True
+
+
+def global_content_for_winner(winner: ModuleProposal):
+    """Return the content that is actually globally broadcast.
+
+    Raw module proposals remain in the trace for debugging. The global broadcast
+    itself is stricter: only perception may broadcast resource/base/target
+    coordinates. This prevents motor from carrying a target forward through its
+    own winning broadcasts.
+    """
+
+    if str(winner.module_name).lower().startswith("perception"):
+        return winner.content
+    return strip_target_coordinates(winner.content)
+
+
+def global_metadata_for_winner(winner: ModuleProposal) -> dict:
+    metadata = deepcopy(winner.metadata)
+    if str(winner.module_name).lower().startswith("perception"):
+        metadata["winner_rationale"] = winner.rationale
+        metadata["winner_reflection"] = winner.reflection
+        return metadata
+    metadata["winner_rationale"] = redact_target_text(winner.rationale)
+    metadata["winner_reflection"] = redact_target_text(winner.reflection)
+    metadata["spatial_target_redaction"] = {
+        "applied": True,
+        "reason": "Only perception broadcasts resource/base/target coordinates.",
+    }
+    return metadata
+
+
+def memory_broadcast_for_context(broadcast: WorkspaceBroadcast) -> WorkspaceBroadcast:
+    """Store a non-executable context copy in workspace memory.
+
+    The returned broadcast from ``CentralWorkspace.broadcast`` is the fresh
+    same-cycle event used by ActionResolver and the trace. Workspace memory is
+    what modules hear on the next cycle. Action hints are transient commands, so
+    they should not be maintained as new action cues.
+    """
+
+    metadata = deepcopy(broadcast.metadata)
+    if broadcast.action_hint:
+        metadata = strip_transient_action_cues(metadata)
+        metadata["transient_action_redaction"] = {
+            "applied": True,
+            "reason": "Action hints are same-cycle commands and are not maintained as next-cycle context.",
+        }
+    return WorkspaceBroadcast(
+        timestamp=broadcast.timestamp,
+        winner_module=broadcast.winner_module,
+        content=strip_transient_action_cues(deepcopy(broadcast.content))
+        if broadcast.action_hint
+        else deepcopy(broadcast.content),
+        importance_score=broadcast.importance_score,
+        confidence=broadcast.confidence,
+        action_hint=None,
+        metadata=metadata,
+    )
+
+
+def strip_target_coordinates(value):
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            if key in TARGET_KEYS:
+                continue
+            sanitized_item = strip_target_coordinates(item)
+            if sanitized_item is None and key == "observations":
+                sanitized_item = []
+            sanitized[key] = sanitized_item
+        return sanitized
+    if isinstance(value, list):
+        sanitized_items = []
+        for item in value:
+            sanitized_item = strip_target_coordinates(item)
+            if sanitized_item is not None:
+                sanitized_items.append(sanitized_item)
+        return sanitized_items
+    if isinstance(value, str):
+        if should_drop_observation_string(value):
+            return None
+        return redact_target_text(value)
+    return value
+
+
+def strip_transient_action_cues(value):
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            if key in TRANSIENT_ACTION_KEYS:
+                continue
+            sanitized_item = strip_transient_action_cues(item)
+            if sanitized_item is None and key == "observations":
+                sanitized_item = []
+            sanitized[key] = sanitized_item
+        return sanitized
+    if isinstance(value, list):
+        sanitized_items = []
+        for item in value:
+            sanitized_item = strip_transient_action_cues(item)
+            if sanitized_item is not None:
+                sanitized_items.append(sanitized_item)
+        return sanitized_items
+    if isinstance(value, str):
+        if should_drop_action_observation_string(value):
+            return None
+        return redact_action_text(value)
+    return value
+
+
+def should_drop_observation_string(value: str) -> bool:
+    if "=" not in value:
+        return False
+    key = value.split("=", 1)[0].strip()
+    return key in TARGET_KEYS
+
+
+def should_drop_action_observation_string(value: str) -> bool:
+    if "=" not in value:
+        return False
+    key = value.split("=", 1)[0].strip()
+    return key in TRANSIENT_ACTION_KEYS
+
+
+def redact_target_text(text: str) -> str:
+    if not text:
+        return text
+    redacted = str(text)
+    coordinate = r"(?:\[[^\]]*(?:\]|\.{3})?|\([^)]+\)|None)"
+    for key in TARGET_KEYS:
+        redacted = re.sub(
+            rf"({key}\s*=\s*){coordinate}",
+            rf"\1<redacted>",
+            redacted,
+        )
+    for key in TARGET_TEXT_KEYS:
+        redacted = re.sub(
+            rf"({key}\s+target\s+at\s*){coordinate}",
+            rf"\1<redacted>",
+            redacted,
+            flags=re.IGNORECASE,
+        )
+        redacted = re.sub(
+            rf"({key}\s+target\s*=\s*){coordinate}",
+            rf"\1<redacted>",
+            redacted,
+            flags=re.IGNORECASE,
+        )
+        redacted = re.sub(
+            rf"({key}\s+at\s*){coordinate}",
+            rf"\1<redacted>",
+            redacted,
+            flags=re.IGNORECASE,
+        )
+        redacted = re.sub(
+            rf"({key}\s*=\s*){coordinate}",
+            rf"\1<redacted>",
+            redacted,
+            flags=re.IGNORECASE,
+        )
+        redacted = re.sub(
+            rf"(\b{key}\s*){coordinate}",
+            rf"\1<redacted>",
+            redacted,
+            flags=re.IGNORECASE,
+        )
+    return redacted
+
+
+def redact_action_text(text: str) -> str:
+    if not text:
+        return text
+    redacted = str(text)
+    patterns = [
+        rf"(Motor proposes\s+){TRANSIENT_ACTIONS}",
+        rf"(planned_action\s*=\s*){TRANSIENT_ACTIONS}",
+        rf"(action_hint\s*=\s*){TRANSIENT_ACTIONS}",
+        rf"(proposed action\s+){TRANSIENT_ACTIONS}",
+        rf"(chosen action\s+){TRANSIENT_ACTIONS}",
+        rf"(I chose\s+){TRANSIENT_ACTIONS}",
+        rf"(I will hold with\s+){TRANSIENT_ACTIONS}",
+    ]
+    for pattern in patterns:
+        redacted = re.sub(pattern, rf"\1<action>", redacted, flags=re.IGNORECASE)
+    return redacted

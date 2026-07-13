@@ -99,20 +99,48 @@ class MockLLMClient:
         agent = state.get("agent_position")
         resource = state.get("resource_position")
         base = state.get("base_position")
-        return {
-            "summary": (
+        task_goal = str(user_payload.get("task_goal") or "")
+        broadcast_positions = extract_positions_from_broadcast(broadcast)
+        needs_spatial_target_refresh = not (
+            broadcast_positions.get("resource_position")
+            and broadcast_positions.get("base_position")
+        )
+        if needs_spatial_target_refresh:
+            observations.append("spatial_target_refresh=needed")
+            if task_goal:
+                observations.append(f"task_goal={task_goal}")
+            summary = (
+                "Spatial target refresh for collect-resource-and-return: "
+                f"agent at {agent}, resource target at {resource}, base target at {base}, "
+                f"with {len(walls)} known walls."
+            )
+            rationale = (
+                "The active workspace does not carry resource/base target coordinates, "
+                "so perception refreshes the global visual-spatial target context."
+            )
+            reflection = (
+                f"I see the agent at {agent}, the resource at {resource}, and the base at {base}. "
+                "Because the current broadcast lacks usable spatial targets, I should upload "
+                "a target refresh for motor while still avoiding any direct movement command."
+            )
+        else:
+            summary = (
                 f"Visual map update: agent at {agent}, resource at {resource}, "
                 f"base at {base}, with {len(walls)} known walls."
-            ),
-            "observations": observations,
-            "confidence": 0.72,
-            "action_hint": None,
-            "rationale": "Perception reports salient visual-spatial state but does not command the simulator.",
-            "reflection": (
+            )
+            rationale = "Perception reports salient visual-spatial state but does not command the simulator."
+            reflection = (
                 f"I see the agent at {agent}, the resource at {resource}, and the base at {base}. "
                 "My role is to broadcast this global spatial context so motor can plan; "
                 "I am not issuing a movement command."
-            ),
+            )
+        return {
+            "summary": summary,
+            "observations": observations,
+            "confidence": 0.72,
+            "action_hint": None,
+            "rationale": rationale,
+            "reflection": reflection,
         }
 
     def _motor_response(self, user_payload: JsonDict) -> JsonDict:

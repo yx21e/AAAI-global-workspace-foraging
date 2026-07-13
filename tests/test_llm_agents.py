@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gwt_agent.core.types import EnvironmentState, ModuleInput
+from gwt_agent.core.types import EnvironmentState, ModuleInput, WorkspaceBroadcast
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
 from gwt_agent.llm.client import MockLLMClient, parse_json_object
 from gwt_agent.modules.llm_agents import LLMLanguageModule, LLMMotorModule, LLMPerceptionModule
@@ -46,6 +46,36 @@ class LLMAgentTest(unittest.TestCase):
             "/tmp/map.png",
         )
         self.assertTrue(proposal.metadata["llm_agent"]["supports_images"])
+
+    def test_perception_refreshes_targets_when_workspace_lacks_spatial_target(self):
+        module = LLMPerceptionModule(client=MockLLMClient())
+        module_input = ModuleInput(
+            module_name="perception",
+            env_t=0,
+            cycle_t=1,
+            private_observation={
+                "global_screenshot": "/tmp/map.png",
+                "global_map": [["BASE", "AGENT", "RESOURCE"]],
+                "agent_position": (1, 0),
+                "resource_position": (2, 0),
+                "base_position": (0, 0),
+                "wall_positions": [],
+            },
+            global_broadcast=WorkspaceBroadcast(
+                timestamp=0,
+                winner_module="motor",
+                content={"summary": "Motor broadcast without global target coordinates."},
+                importance_score=0.4,
+                action_hint="RIGHT",
+            ),
+            task_goal="collect one resource and return to base",
+        )
+
+        proposal = module.propose(module_input)
+
+        self.assertIn("Spatial target refresh", proposal.content["summary"])
+        self.assertIn("spatial_target_refresh=needed", proposal.content["observations"])
+        self.assertIsNone(proposal.action_hint)
 
     def test_motor_llm_can_emit_action_hint(self):
         module = LLMMotorModule(client=MockLLMClient())

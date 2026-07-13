@@ -26,7 +26,7 @@ class ActionResolver:
                 confidence=broadcast.confidence,
                 route="forced_action",
             )
-        if broadcast.action_hint:
+        if broadcast.action_hint and self._broadcast_action_is_fresh(broadcast):
             return self._from_command(
                 command=broadcast.action_hint,
                 broadcast=broadcast,
@@ -89,6 +89,12 @@ class ActionResolver:
             return None
         best = max(action_proposals, key=lambda proposal: proposal.importance_score)
         return best.action_hint
+
+    def _broadcast_action_is_fresh(self, broadcast: WorkspaceBroadcast) -> bool:
+        workspace_metadata = broadcast.metadata.get("workspace", {})
+        if not workspace_metadata:
+            return True
+        return bool(workspace_metadata.get("ignited"))
 
     def _from_command(
         self,

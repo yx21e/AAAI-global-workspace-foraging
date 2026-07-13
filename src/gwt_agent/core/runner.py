@@ -146,7 +146,11 @@ class WorkspaceRunner:
         broadcast: WorkspaceBroadcast,
     ) -> Optional[WorkspaceBroadcast]:
         workspace_metadata = broadcast.metadata.get("workspace", {})
-        if workspace_metadata.get("ignited") or workspace_metadata.get("maintained"):
+        if workspace_metadata.get("ignited"):
+            if self.workspace.state.active_content:
+                return deepcopy(self.workspace.state.active_content)
+            return broadcast
+        if workspace_metadata.get("maintained"):
             return broadcast
         return None
 

@@ -34,7 +34,7 @@ Qiyuan ForagingEnv
   -> WorkspaceBroadcast
      winning content is broadcast back to all modules on the next cycle
   -> ActionResolver
-     executes workspace action if the winning broadcast has an action_hint
+     executes workspace action only if a fresh ignited broadcast has an action_hint
      optionally executes high-importance motor action through non-workspace route
   -> Qiyuan env.step(action) only when EnvAction.should_step=true
   -> trace/action/viewer/replay artifacts
@@ -46,6 +46,11 @@ Important implementation boundaries:
 - The motor module does **not** receive `resource_position` or `base_position`
   through its private channel. It can only use target information after that
   information appears in a workspace broadcast.
+- Only perception may globally broadcast resource/base/target coordinates.
+  Raw motor proposals are still logged for debugging, but motor broadcasts are
+  sanitized before they become the next cycle's shared workspace input.
+- A maintained workspace broadcast can be heard by modules as context, but its
+  old `action_hint` is not resent to Qiyuan as a new simulator action.
 - The language module is the experimenter-facing spokesperson. It never sends
   actions to Qiyuan.
 - The non-workspace motor route is off by default. When enabled, it represents
@@ -70,6 +75,26 @@ consecutive cycles, it can win several consecutive cycles.
 Optional switches such as `--score-modifier`, `--workspace-recurrence-bonus`,
 and `--workspace-adjustment-policy anti_echo` are explicit diagnostic/ablation
 settings. They are not enabled in the default mechanism.
+
+## Strict Broadcast Isolation
+
+The current version enforces the information boundary that motivated the latest
+pipeline revision:
+
+- perception receives the full global map/screenshot and may broadcast spatial
+  target coordinates
+- motor receives only local obstacle/blocked-direction state plus the previous
+  broadcast
+- language receives the previous broadcast plus experimenter pause/query events
+  and language history
+- motor `NOOP` proposals and idle language-listening proposals are not globally
+  uploadable
+
+This means motor cannot preserve a target by winning and rebroadcasting its own
+target-bearing content. If motor wins, the broadcast sent back to modules
+removes `resource_position`, `base_position`, and `target_position`. On the next
+cycle, motor must either hear a fresh perception target broadcast or return
+`NOOP`.
 
 ## Repository Layout
 
@@ -142,7 +167,7 @@ PYTHONPATH=src:. python3 -m unittest discover -s tests -v
 Expected current result:
 
 ```text
-20 tests OK
+28 tests OK
 ```
 
 ## Run the Integrated Qiyuan Demo
@@ -161,7 +186,7 @@ PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
   --difficulty 2 \
   --seed 7 \
   --target-resources 1 \
-  --max-cycles 90 \
+  --max-cycles 180 \
   --run-id current-demo \
   --agent-backend mock-llm \
   --allow-non-workspace-motor
@@ -349,14 +374,22 @@ With the current mock demo command above:
 ```text
 done: true
 resources_collected: 1
-workspace winners: perception and motor both appear
-motor private resource/base leaks: 0
+cycle_count: 50
+env_step_count: 25
+workspace winners: perception=25, motor=25
+action routes: workspace_broadcast=25, no_action_threshold_not_met=25
+non-workspace motor moves: 0
+non-perception broadcast target leaks: 0
+motor next-cycle old-action leaks: 0
+motor next-cycle target leaks: 0
+maintained old-action replays: 0
 ```
 
 The motor module no longer receives target coordinates privately. Perception
-must broadcast global target information before motor can use it. Some movement
-may still execute through the non-workspace motor threshold when that route is
-explicitly enabled.
+must broadcast global target information before motor can use it. Movement may
+execute through the non-workspace motor threshold only when that route is
+explicitly enabled and the current motor proposal is a real action above the
+threshold; the strict smoke run above did not need that route.
 
 ## What to Avoid Claiming
 
