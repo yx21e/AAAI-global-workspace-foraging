@@ -650,8 +650,6 @@ def summarize_broadcast(value) -> str:
         summary = str(content.get("summary") or "")
     elif content is not None:
         summary = str(content)
-    if len(summary) > 120:
-        summary = summary[:117] + "..."
     return f"{module}: {summary}" if summary else str(module)
 
 
@@ -668,10 +666,6 @@ def summarize_history(history) -> str:
         output = item.get("output_language")
         prompt_text = str(prompt or "")
         output_text = str(output or "")
-        if len(prompt_text) > 60:
-            prompt_text = prompt_text[:57] + "..."
-        if len(output_text) > 60:
-            output_text = output_text[:57] + "..."
         parts.append(f"{mode}: input={prompt_text}; output={output_text}")
     return " | ".join(parts) if parts else "none"
 

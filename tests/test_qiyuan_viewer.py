@@ -6,10 +6,31 @@ import unittest
 from pathlib import Path
 
 from scripts.serve_qiyuan_viewer import ServerConfig, build_rerun_command
-from gwt_agent.ui.qiyuan_viewer import build_viewer
+from gwt_agent.ui.qiyuan_viewer import build_viewer, proposal_language
 
 
 class QiyuanViewerTest(unittest.TestCase):
+    def test_proposal_language_keeps_all_observations(self):
+        output = proposal_language(
+            {
+                "content": {
+                    "summary": "Module summary.",
+                    "observations": [
+                        "first observation",
+                        "second observation",
+                        "third observation",
+                        "fourth observation",
+                        "fifth observation",
+                        "sixth observation",
+                    ],
+                }
+            }
+        )
+
+        self.assertIn("- first observation", output)
+        self.assertIn("- sixth observation", output)
+        self.assertNotIn("...", output)
+
     def test_build_viewer_from_run_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

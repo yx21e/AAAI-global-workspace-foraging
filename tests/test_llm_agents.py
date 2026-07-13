@@ -6,7 +6,12 @@ from pathlib import Path
 
 from gwt_agent.core.types import EnvironmentState, ModuleInput, WorkspaceBroadcast
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
-from gwt_agent.llm.client import MockLLMClient, parse_json_object
+from gwt_agent.llm.client import (
+    MockLLMClient,
+    parse_json_object,
+    summarize_broadcast,
+    summarize_history,
+)
 from gwt_agent.modules.llm_agents import LLMLanguageModule, LLMMotorModule, LLMPerceptionModule
 
 
@@ -18,6 +23,29 @@ class LLMAgentTest(unittest.TestCase):
 
         self.assertEqual(parsed["summary"], "ok")
         self.assertEqual(parsed["reflection"], "brief self-check")
+
+    def test_mock_summary_helpers_do_not_truncate_view_text(self):
+        long_summary = "full broadcast text " * 20
+        broadcast_text = summarize_broadcast(
+            {
+                "winner_module": "perception",
+                "content": {"summary": long_summary},
+            }
+        )
+        history_text = summarize_history(
+            [
+                {
+                    "mode": "broadcast_listening",
+                    "heard_broadcast": long_summary,
+                    "output_language": "full output text " * 20,
+                }
+            ]
+        )
+
+        self.assertIn(long_summary, broadcast_text)
+        self.assertIn(long_summary, history_text)
+        self.assertNotIn("...", broadcast_text)
+        self.assertNotIn("...", history_text)
 
     def test_multimodal_perception_uses_screenshot_path(self):
         module = LLMPerceptionModule(client=MockLLMClient())

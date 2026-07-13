@@ -79,7 +79,4 @@ def summarize_content(content) -> str:
     if isinstance(content, dict):
         keys = ", ".join(sorted(str(key) for key in content.keys())[:5])
         return f"dict keys: {keys}"
-    text = str(content)
-    if len(text) > 160:
-        return text[:157] + "..."
-    return text
+    return str(content)

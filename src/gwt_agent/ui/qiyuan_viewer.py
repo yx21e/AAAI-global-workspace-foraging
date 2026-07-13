@@ -192,10 +192,8 @@ def proposal_language(proposal: dict) -> str:
         summary = content.get("summary") or content.get("verbal_report")
         observations = content.get("observations")
         if summary and isinstance(observations, list) and observations:
-            shown = "; ".join(str(item) for item in observations[:5])
-            if len(observations) > 5:
-                shown += "; ..."
-            return f"{summary}\nobservations: {shown}"
+            shown = "\n".join(f"- {item}" for item in observations)
+            return f"{summary}\nobservations:\n{shown}"
         if summary:
             return str(summary)
         for key in ("verbal_report", "summary", "salient_event", "planned_action", "goal"):
@@ -491,6 +489,36 @@ HTML_TEMPLATE = r"""<!doctype html>
       min-width: 0;
       overflow-wrap: anywhere;
     }
+    .text-wrap {
+      min-width: 0;
+      display: grid;
+      gap: 6px;
+    }
+    .text-block {
+      max-height: 132px;
+      overflow: auto;
+      padding: 7px 8px;
+      border: 1px solid #e3e8e6;
+      border-radius: 6px;
+      background: #fbfcfb;
+      color: inherit;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .text-block.short {
+      max-height: none;
+      padding: 0;
+      border: 0;
+      background: transparent;
+    }
+    .view-all {
+      justify-self: start;
+      min-width: 64px;
+      height: 28px;
+      padding-inline: 8px;
+      font-size: 12px;
+    }
     .route {
       color: var(--blue);
       font-weight: 700;
@@ -596,9 +624,6 @@ HTML_TEMPLATE = r"""<!doctype html>
       padding-top: 6px;
       border-top: 1px solid var(--line);
       color: #27313c;
-      line-height: 1.4;
-      overflow-wrap: anywhere;
-      white-space: pre-wrap;
     }
     .module-rationale,
     .module-reflection {
@@ -617,6 +642,53 @@ HTML_TEMPLATE = r"""<!doctype html>
     .module-rationale span,
     .module-reflection span {
       color: var(--muted);
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      place-items: center;
+      padding: 24px;
+      background: rgba(23, 33, 43, 0.42);
+    }
+    .modal-backdrop.open {
+      display: grid;
+    }
+    .modal-panel {
+      width: min(920px, 96vw);
+      max-height: 88vh;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .modal-head {
+      min-height: 54px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .modal-head h2 {
+      margin: 0;
+    }
+    .modal-text {
+      margin: 0;
+      padding: 14px;
+      min-height: 180px;
+      max-height: 72vh;
+      overflow: auto;
+      color: #27313c;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     @media (max-width: 920px) {
       header {
@@ -704,6 +776,15 @@ HTML_TEMPLATE = r"""<!doctype html>
       </div>
     </aside>
   </main>
+  <div class="modal-backdrop" id="fullTextModal" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="fullTextTitle">
+      <div class="modal-head">
+        <h2 id="fullTextTitle">Full text</h2>
+        <button id="closeFullTextBtn" class="wide" type="button" title="Close full text">Close</button>
+      </div>
+      <pre class="modal-text" id="fullTextBody"></pre>
+    </div>
+  </div>
   <script>
     const data = __PAYLOAD__;
     const image = document.getElementById('frameImage');
@@ -716,8 +797,14 @@ HTML_TEMPLATE = r"""<!doctype html>
     const copyCommandBtn = document.getElementById('copyCommandBtn');
     const rerunCommand = document.getElementById('rerunCommand');
     const promptStatus = document.getElementById('promptStatus');
+    const fullTextModal = document.getElementById('fullTextModal');
+    const fullTextTitle = document.getElementById('fullTextTitle');
+    const fullTextBody = document.getElementById('fullTextBody');
+    const closeFullTextBtn = document.getElementById('closeFullTextBtn');
     let index = 0;
     let timer = null;
+    let fullTextStore = {};
+    let fullTextSeq = 0;
 
     function text(value) {
       if (value === null || value === undefined || value === '') return '-';
@@ -735,9 +822,26 @@ HTML_TEMPLATE = r"""<!doctype html>
       })[ch]);
     }
 
+    function isLongText(value) {
+      const valueText = text(value);
+      return valueText.length > 180 || valueText.includes('\n');
+    }
+
+    function textBlock(value, title) {
+      const valueText = text(value);
+      const id = `full-text-${fullTextSeq++}`;
+      const long = isLongText(valueText);
+      fullTextStore[id] = {title: text(title), body: valueText};
+      const blockClass = long ? 'text-block' : 'text-block short';
+      const button = long
+        ? `<button class="view-all" type="button" data-full-text-id="${id}">View all</button>`
+        : '';
+      return `<div class="text-wrap"><div class="${blockClass}">${html(valueText)}</div>${button}</div>`;
+    }
+
     function kv(container, rows) {
       container.innerHTML = rows.map(([k, v, cls]) => (
-        `<div class="k">${html(k)}</div><div class="v ${cls || ''}">${html(v)}</div>`
+        `<div class="k">${html(k)}</div><div class="v ${cls || ''}">${isLongText(v) ? textBlock(v, k) : html(v)}</div>`
       )).join('');
     }
 
@@ -768,9 +872,9 @@ HTML_TEMPLATE = r"""<!doctype html>
             <div class="k">relevance</div><div class="v">${Number(row.relevance || 0).toFixed(3)}</div>
             <div class="k">hint</div><div class="v">${html(row.action_hint)}</div>
           </div>
-          <div class="module-output">${html(row.output_language)}</div>
-          <div class="module-rationale"><span>rationale</span>${html(row.rationale)}</div>
-          <div class="module-reflection"><span>reflection</span>${html(row.reflection)}</div>
+          <div class="module-output">${textBlock(row.output_language, `${row.module} output`)}</div>
+          <div class="module-rationale"><span>rationale</span>${textBlock(row.rationale, `${row.module} rationale`)}</div>
+          <div class="module-reflection"><span>reflection</span>${textBlock(row.reflection, `${row.module} reflection`)}</div>
         </div>`;
       }).join('');
     }
@@ -787,6 +891,8 @@ HTML_TEMPLATE = r"""<!doctype html>
     }
 
     function render() {
+      fullTextStore = {};
+      fullTextSeq = 0;
       const frame = data.frames[index];
       const step = data.steps[Math.min(index, data.steps.length - 1)] || {};
       image.src = frame.src;
@@ -816,6 +922,21 @@ HTML_TEMPLATE = r"""<!doctype html>
         promptCycle.value = step.cycle_t === null || step.cycle_t === undefined ? 0 : step.cycle_t;
       }
       refreshRerunCommand();
+    }
+
+    function openFullText(id) {
+      const record = fullTextStore[id];
+      if (!record) return;
+      fullTextTitle.textContent = record.title || 'Full text';
+      fullTextBody.textContent = record.body || '-';
+      fullTextModal.classList.add('open');
+      fullTextModal.setAttribute('aria-hidden', 'false');
+      closeFullTextBtn.focus();
+    }
+
+    function closeFullText() {
+      fullTextModal.classList.remove('open');
+      fullTextModal.setAttribute('aria-hidden', 'true');
     }
 
     function setIndex(next) {
@@ -973,7 +1094,22 @@ HTML_TEMPLATE = r"""<!doctype html>
     experimenterPrompt.addEventListener('input', refreshRerunCommand);
     sendPromptBtn.addEventListener('click', submitPrompt);
     copyCommandBtn.addEventListener('click', copyCommand);
+    closeFullTextBtn.addEventListener('click', closeFullText);
+    fullTextModal.addEventListener('click', event => {
+      if (event.target === fullTextModal) closeFullText();
+    });
+    document.addEventListener('click', event => {
+      const target = event.target;
+      if (!target || !target.closest) return;
+      const button = target.closest('[data-full-text-id]');
+      if (!button) return;
+      openFullText(button.getAttribute('data-full-text-id'));
+    });
     window.addEventListener('keydown', event => {
+      if (fullTextModal.classList.contains('open')) {
+        if (event.key === 'Escape') closeFullText();
+        return;
+      }
       if (event.key === 'ArrowLeft') setIndex(index - 1);
       if (event.key === 'ArrowRight') setIndex(index + 1);
       if (event.key === ' ') {
