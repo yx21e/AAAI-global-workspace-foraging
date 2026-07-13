@@ -173,7 +173,7 @@ class WorkspaceRunnerTest(unittest.TestCase):
         self.assertNotIn("planned_action=LEFT", "\n".join(memory.content["observations"]))
         self.assertIn("transient_action_redaction", memory.metadata)
 
-    def test_motor_noop_is_not_globally_uploadable(self):
+    def test_motor_noop_can_win_workspace_competition(self):
         workspace = CentralWorkspace(ignition_threshold=0.1)
         proposals = [
             ModuleProposal(
@@ -194,9 +194,10 @@ class WorkspaceRunnerTest(unittest.TestCase):
         winner = workspace.select_winner(proposals)
 
         self.assertIsNotNone(winner)
-        self.assertEqual(winner.module_name, "perception")
+        self.assertEqual(winner.module_name, "motor")
+        self.assertEqual(winner.action_hint, "NOOP")
 
-    def test_idle_language_is_not_globally_uploadable(self):
+    def test_idle_language_can_win_workspace_competition(self):
         workspace = CentralWorkspace(ignition_threshold=0.1)
         proposals = [
             ModuleProposal(
@@ -216,9 +217,9 @@ class WorkspaceRunnerTest(unittest.TestCase):
         winner = workspace.select_winner(proposals)
 
         self.assertIsNotNone(winner)
-        self.assertEqual(winner.module_name, "perception")
+        self.assertEqual(winner.module_name, "language")
 
-    def test_report_language_can_be_globally_uploadable(self):
+    def test_report_language_can_win_workspace_competition(self):
         workspace = CentralWorkspace(ignition_threshold=0.1)
         proposals = [
             ModuleProposal(

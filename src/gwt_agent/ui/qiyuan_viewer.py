@@ -131,7 +131,6 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
             proposal = state.get("proposal") or {}
             module_name = state.get("module_name")
             output_language = proposal_language(proposal)
-            uploadable, upload_reason = proposal_uploadability(module_name, proposal)
             if module_name in {"language_report", "language"}:
                 language_report = output_language
             modules.append(
@@ -142,8 +141,6 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
                     "salience": proposal.get("salience_score"),
                     "relevance": proposal.get("goal_relevance_score"),
                     "action_hint": proposal.get("action_hint"),
-                    "globally_uploadable": uploadable,
-                    "upload_reason": upload_reason,
                     "output_language": output_language,
                     "rationale": proposal.get("rationale") or "",
                     "reflection": proposal.get("reflection") or "",
@@ -208,22 +205,6 @@ def proposal_language(proposal: dict) -> str:
     if content is None:
         return ""
     return str(content)
-
-
-def proposal_uploadability(module_name: Optional[str], proposal: dict):
-    if not proposal:
-        return False, "No proposal was produced."
-    lower_name = str(module_name or "").lower()
-    action_hint = str(proposal.get("action_hint") or "").upper()
-    content = proposal.get("content") if isinstance(proposal.get("content"), dict) else {}
-    metadata = proposal.get("metadata") if isinstance(proposal.get("metadata"), dict) else {}
-    if lower_name.startswith("motor") and action_hint in {"NOOP", "WAIT", "STAY", "NONE"}:
-        return False, "Filtered from workspace competition: motor NOOP/WAIT/STAY/NONE is not globally uploadable."
-    if "language" in lower_name or "report" in lower_name:
-        if metadata.get("language_uploadable") or content.get("report_requested"):
-            return True, "Eligible: experimenter pause/report query made language uploadable."
-        return False, "Filtered from workspace competition: idle language is only listening; no pause/query/report was active."
-    return True, "Eligible for workspace competition."
 
 
 def reasoning_payload(
@@ -308,19 +289,14 @@ def score_basis_text(score_value, importance_function: dict) -> str:
 def competition_basis_text(modules: List[dict], winner: Optional[str]) -> str:
     if not modules:
         return "No module proposals were available for workspace competition."
-    eligible = [row for row in modules if row.get("globally_uploadable")]
-    filtered = [row for row in modules if not row.get("globally_uploadable")]
-    eligible_text = ", ".join(
+    score_text = ", ".join(
         f"{row.get('module')}={format_score(row.get('importance'))}"
-        for row in eligible
-    ) or "none"
-    filtered_text = "; ".join(
-        f"{row.get('module')}={format_score(row.get('importance'))} ({row.get('upload_reason')})"
-        for row in filtered
+        for row in modules
     ) or "none"
     return (
-        f"Winner={winner or '-'} was selected only among globally uploadable proposals. "
-        f"Eligible scores: {eligible_text}. Filtered proposals: {filtered_text}."
+        f"All module proposals compete in this timestep. Winner={winner or '-'} "
+        f"was selected by highest importance score above the ignition threshold. "
+        f"Scores: {score_text}."
     )
 
 
@@ -910,7 +886,7 @@ HTML_TEMPLATE = r"""<!doctype html>
             <div class="k">salience</div><div class="v">${Number(row.salience || 0).toFixed(3)}</div>
             <div class="k">relevance</div><div class="v">${Number(row.relevance || 0).toFixed(3)}</div>
             <div class="k">hint</div><div class="v">${html(row.action_hint)}</div>
-            <div class="k">eligible</div><div class="v">${row.globally_uploadable ? 'yes' : 'no'} - ${html(row.upload_reason)}</div>
+            <div class="k">competes</div><div class="v">yes</div>
           </div>
           <div class="module-output">${textBlock(row.output_language, `${row.module} output`)}</div>
           <div class="module-rationale"><span>rationale</span>${textBlock(row.rationale, `${row.module} rationale`)}</div>

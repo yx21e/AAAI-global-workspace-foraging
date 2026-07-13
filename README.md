@@ -66,6 +66,10 @@ The default run follows the discussed pipeline directly. At each cognitive
 cycle, modules submit proposals, the deterministic scorer computes importance
 from bottom-up salience and top-down relevance, and `CentralWorkspace` selects
 the highest-scoring proposal only if it crosses the ignition threshold.
+Perception, motor, and language proposals all participate in this competition
+on every cycle. A language winner broadcasts language content but does not send
+a simulator action. A motor `NOOP` winner is valid workspace content but also
+does not advance Qiyuan's environment state.
 
 The code does **not** force perception and motor to alternate, does **not**
 require each module to win a minimum number of times, and does **not** choose
@@ -87,8 +91,8 @@ pipeline revision:
   broadcast
 - language receives the previous broadcast plus experimenter pause/query events
   and language history
-- motor `NOOP` proposals and idle language-listening proposals are not globally
-  uploadable
+- perception, motor, and language all enter workspace competition after scoring;
+  there is no idle-language or motor-`NOOP` eligibility filter
 
 This means motor cannot preserve a target by winning and rebroadcasting its own
 target-bearing content. If motor wins, the broadcast sent back to modules
@@ -167,7 +171,7 @@ PYTHONPATH=src:. python3 -m unittest discover -s tests -v
 Expected current result:
 
 ```text
-28 tests OK
+31 tests OK
 ```
 
 ## Run the Integrated Qiyuan Demo
@@ -186,7 +190,7 @@ PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
   --difficulty 2 \
   --seed 7 \
   --target-resources 1 \
-  --max-cycles 180 \
+  --max-cycles 220 \
   --run-id current-demo \
   --agent-backend mock-llm \
   --allow-non-workspace-motor
@@ -374,11 +378,11 @@ With the current mock demo command above:
 ```text
 done: true
 resources_collected: 1
-cycle_count: 50
+cycle_count: 51
 env_step_count: 25
-workspace winners: perception=25, motor=25
-action routes: workspace_broadcast=25, no_action_threshold_not_met=25
-non-workspace motor moves: 0
+workspace winners: perception=25, motor=15, language=11
+action routes: workspace_broadcast=15, non_workspace_motor_threshold=10, no_action_threshold_not_met=26
+non-workspace motor moves: 10
 non-perception broadcast target leaks: 0
 motor next-cycle old-action leaks: 0
 motor next-cycle target leaks: 0
@@ -389,7 +393,8 @@ The motor module no longer receives target coordinates privately. Perception
 must broadcast global target information before motor can use it. Movement may
 execute through the non-workspace motor threshold only when that route is
 explicitly enabled and the current motor proposal is a real action above the
-threshold; the strict smoke run above did not need that route.
+threshold; in the all-compete smoke run above, language wins are allowed and
+some movement occurs through that separate motor-threshold route.
 
 ## What to Avoid Claiming
 

@@ -34,11 +34,6 @@ class CentralWorkspace:
         proposal_list: List[ModuleProposal] = list(proposals)
         if not proposal_list:
             raise ValueError("CentralWorkspace requires at least one proposal.")
-        proposal_list = [
-            proposal for proposal in proposal_list if is_globally_uploadable(proposal)
-        ]
-        if not proposal_list:
-            return None
         winner = max(
             proposal_list,
             key=lambda proposal: (
@@ -120,21 +115,6 @@ class CentralWorkspace:
                 },
             },
         )
-
-
-def is_globally_uploadable(proposal: ModuleProposal) -> bool:
-    module_name = str(proposal.module_name).lower()
-    action_hint = str(proposal.action_hint or "").upper()
-    if module_name.startswith("motor") and action_hint in {"NOOP", "WAIT", "STAY", "NONE"}:
-        return False
-    if "language" in module_name or "report" in module_name:
-        content = proposal.content if isinstance(proposal.content, dict) else {}
-        if proposal.metadata.get("language_uploadable"):
-            return True
-        if content.get("report_requested"):
-            return True
-        return False
-    return True
 
 
 def global_content_for_winner(winner: ModuleProposal):

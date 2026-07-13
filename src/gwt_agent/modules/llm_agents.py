@@ -258,7 +258,7 @@ class LLMLanguageModule(LLMModule):
         private = module_input.private_observation or {}
         if not isinstance(private, dict):
             private = {}
-        proposal.metadata["language_uploadable"] = bool(
+        proposal.metadata["language_event_active"] = bool(
             private.get("pause_requested") or private.get("report_query")
         )
         self.input_history.append(

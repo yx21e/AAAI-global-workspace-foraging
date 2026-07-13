@@ -176,22 +176,17 @@ class MockLLMClient:
         goal = "return_to_base" if carrying else "collect_resource"
         if target is None:
             return {
-                "summary": "No workspace target or action cue is available; motor holds position.",
-                "observations": [
-                    f"agent_position={agent_pos}",
-                    "target_source=unavailable",
-                    f"blocked_directions={blocked}",
-                ],
+                "summary": "Idle.",
+                "observations": [],
                 "confidence": 0.35,
                 "action_hint": "NOOP",
                 "rationale": (
-                    "The motor center only has local obstacle information and has not "
-                    "received a global target through the workspace broadcast."
+                    "The motor center only has local obstacle information and lacks "
+                    "a usable global cue for a movement command."
                 ),
                 "reflection": (
                     f"I am at {agent_pos} and only know local blocked directions {blocked}. "
-                    "No resource/base target has been broadcast to me, so moving would be unguided; "
-                    "I will hold with NOOP."
+                    "I do not have a usable movement cue, so I will hold with NOOP."
                 ),
             }
         is_blocked = bool(blocked.get(action))

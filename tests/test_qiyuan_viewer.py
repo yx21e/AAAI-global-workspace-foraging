@@ -10,7 +10,6 @@ from gwt_agent.ui.qiyuan_viewer import (
     build_viewer,
     competition_basis_text,
     proposal_language,
-    proposal_uploadability,
 )
 
 
@@ -36,37 +35,25 @@ class QiyuanViewerTest(unittest.TestCase):
         self.assertIn("- sixth observation", output)
         self.assertNotIn("...", output)
 
-    def test_idle_language_score_can_be_filtered_from_competition(self):
-        uploadable, reason = proposal_uploadability(
-            "language",
-            {
-                "importance_score": 0.327,
-                "content": {"summary": "Idle language output."},
-                "metadata": {"language_uploadable": False},
-            },
-        )
+    def test_competition_basis_says_all_modules_compete(self):
         basis = competition_basis_text(
             [
                 {
                     "module": "motor",
                     "importance": 0.324,
-                    "globally_uploadable": True,
-                    "upload_reason": "Eligible for workspace competition.",
                 },
                 {
                     "module": "language",
                     "importance": 0.327,
-                    "globally_uploadable": uploadable,
-                    "upload_reason": reason,
                 },
             ],
-            winner="motor",
+            winner="language",
         )
 
-        self.assertFalse(uploadable)
-        self.assertIn("idle language", reason)
+        self.assertIn("All module proposals compete", basis)
+        self.assertIn("motor=0.324", basis)
         self.assertIn("language=0.327", basis)
-        self.assertIn("Filtered proposals", basis)
+        self.assertIn("Winner=language", basis)
 
     def test_build_viewer_from_run_artifacts(self):
         with tempfile.TemporaryDirectory() as temp_dir:
