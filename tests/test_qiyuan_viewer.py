@@ -146,6 +146,7 @@ class QiyuanViewerTest(unittest.TestCase):
             "ignition_threshold": 0.25,
             "salience_weight": 0.55,
             "relevance_weight": 0.45,
+            "workspace_adjustment_policy": "anti_echo",
             "language_pause_cycles": {"2": "earlier prompt"},
             "allow_non_workspace_motor_action": True,
         }
@@ -163,6 +164,8 @@ class QiyuanViewerTest(unittest.TestCase):
         self.assertIn("--pause-language-at", command)
         self.assertIn("2=earlier prompt", command)
         self.assertIn("4=What did you hear?", command)
+        self.assertIn("--workspace-adjustment-policy", command)
+        self.assertIn("anti_echo", command)
         self.assertIn("--allow-non-workspace-motor", command)
 
 

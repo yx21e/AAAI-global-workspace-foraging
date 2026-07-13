@@ -100,6 +100,15 @@ def parse_args() -> argparse.Namespace:
         help="Optional bonus for the module that won the previous workspace cycle.",
     )
     parser.add_argument(
+        "--workspace-adjustment-policy",
+        choices=["none", "anti_echo"],
+        default="none",
+        help=(
+            "Optional diagnostic score adjustment. Default none follows the core "
+            "salience/relevance pipeline without winner-balancing rules."
+        ),
+    )
+    parser.add_argument(
         "--report-query-every",
         type=int,
         default=0,
@@ -171,6 +180,7 @@ def main() -> None:
             relevance_weight=args.relevance_weight,
             score_modifiers=parse_score_modifiers(args.score_modifier),
             workspace_recurrence_bonus=args.workspace_recurrence_bonus,
+            workspace_adjustment_policy=args.workspace_adjustment_policy,
         ),
         logger=TraceLogger(str(trace_path)),
         run_id=run_id,
@@ -234,6 +244,7 @@ def main() -> None:
         "salience_weight": args.salience_weight,
         "relevance_weight": args.relevance_weight,
         "workspace_recurrence_bonus": args.workspace_recurrence_bonus,
+        "workspace_adjustment_policy": args.workspace_adjustment_policy,
         "score_modifiers": parse_score_modifiers(args.score_modifier),
         "allow_non_workspace_motor_action": args.allow_non_workspace_motor,
         "motor_execution_threshold": 0.02,

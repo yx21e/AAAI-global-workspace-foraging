@@ -28,7 +28,6 @@ Qiyuan ForagingEnv
   -> deterministic AttentionGate
      bottom-up salience = private-input change
      top-down relevance = proposal similarity to task goal + previous broadcast
-     fixed workspace adjustments prevent idle language/NOOP motor/motor echo dominance
   -> CentralWorkspace
      highest proposal above ignition threshold wins
      otherwise maintained content decays
@@ -53,6 +52,24 @@ Important implementation boundaries:
   an automatic/local action route and is logged separately from workspace actions.
 - The viewer's reasoning display is a concise decision-basis audit. It is not a
   hidden chain-of-thought trace.
+- By default there is no winner-balancing rule: no perception/motor alternation,
+  no winner quota, and no viewer-driven broadcast schedule.
+
+## Mechanism Integrity
+
+The default run follows the discussed pipeline directly. At each cognitive
+cycle, modules submit proposals, the deterministic scorer computes importance
+from bottom-up salience and top-down relevance, and `CentralWorkspace` selects
+the highest-scoring proposal only if it crosses the ignition threshold.
+
+The code does **not** force perception and motor to alternate, does **not**
+require each module to win a minimum number of times, and does **not** choose
+winners for visualization. If one module has the highest score for several
+consecutive cycles, it can win several consecutive cycles.
+
+Optional switches such as `--score-modifier`, `--workspace-recurrence-bonus`,
+and `--workspace-adjustment-policy anti_echo` are explicit diagnostic/ablation
+settings. They are not enabled in the default mechanism.
 
 ## Repository Layout
 

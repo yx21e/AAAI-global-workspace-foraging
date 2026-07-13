@@ -12,6 +12,7 @@ from gwt_agent.core.logger import TraceLogger
 from gwt_agent.core.router import InputRouter
 from gwt_agent.core.runner import WorkspaceRunner
 from gwt_agent.core.types import EnvironmentState, ModuleProposal, WorkspaceBroadcast
+from gwt_agent.core.workspace import CentralWorkspace
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
 from gwt_agent.envs.mock_env import MockGridAdapter
 from gwt_agent.modules.language import LanguageReportModule
@@ -71,6 +72,32 @@ class WorkspaceRunnerTest(unittest.TestCase):
         module_statuses = {state.module_name: state.status for state in trace.module_states}
         self.assertNotIn("perception", proposal_names)
         self.assertEqual(module_statuses["perception"], "disabled")
+
+    def test_workspace_does_not_force_alternating_winners(self):
+        workspace = CentralWorkspace(ignition_threshold=0.1)
+        winners = []
+
+        for timestamp in range(2):
+            proposals = [
+                ModuleProposal(
+                    module_name="perception",
+                    content={"summary": "visual update"},
+                    importance_score=0.3,
+                    uptake_score=0.3,
+                ),
+                ModuleProposal(
+                    module_name="motor",
+                    content={"summary": "motor update"},
+                    importance_score=0.8,
+                    uptake_score=0.8,
+                    action_hint="RIGHT",
+                ),
+            ]
+            winner = workspace.select_winner(proposals)
+            broadcast = workspace.broadcast(timestamp, winner)
+            winners.append(broadcast.winner_module)
+
+        self.assertEqual(winners, ["motor", "motor"])
 
     def test_action_stream_export(self):
         with tempfile.TemporaryDirectory() as temp_dir:

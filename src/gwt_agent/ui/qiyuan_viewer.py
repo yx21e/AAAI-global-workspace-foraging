@@ -859,6 +859,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       argPair(args, '--salience-weight', summary.salience_weight);
       argPair(args, '--relevance-weight', summary.relevance_weight);
       argPair(args, '--workspace-recurrence-bonus', summary.workspace_recurrence_bonus);
+      argPair(args, '--workspace-adjustment-policy', summary.workspace_adjustment_policy);
       argPair(args, '--report-query-every', summary.report_query_every || 0);
       argPair(args, '--report-query', summary.report_query);
       const modifiers = summary.score_modifiers || {};

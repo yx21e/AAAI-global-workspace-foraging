@@ -117,6 +117,7 @@ def build_rerun_command(
     add_arg(command, "--salience-weight", summary.get("salience_weight"))
     add_arg(command, "--relevance-weight", summary.get("relevance_weight"))
     add_arg(command, "--workspace-recurrence-bonus", summary.get("workspace_recurrence_bonus"))
+    add_arg(command, "--workspace-adjustment-policy", summary.get("workspace_adjustment_policy"))
     add_arg(command, "--report-query-every", summary.get("report_query_every", 0))
     add_arg(command, "--report-query", summary.get("report_query"))
     for module, factor in sorted((summary.get("score_modifiers") or {}).items()):

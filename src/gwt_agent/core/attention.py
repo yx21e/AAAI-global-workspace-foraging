@@ -89,6 +89,11 @@ class AttentionGate:
         module_input: ModuleInput,
         last_broadcast: Optional[WorkspaceBroadcast],
     ) -> float:
+        policy = str(module_input.experiment.get("workspace_adjustment_policy", "none")).lower()
+        if policy in {"", "none", "off", "false"}:
+            return 1.0
+        if policy != "anti_echo":
+            return 1.0
         lower_name = proposal.module_name.lower()
         action_hint = (proposal.action_hint or "").upper()
         if lower_name.startswith("motor") and action_hint in {"NOOP", "WAIT", "STAY", "NONE"}:
