@@ -59,7 +59,23 @@ class QiyuanViewerTest(unittest.TestCase):
                     "content": {
                         "summary": "Motor chose PICKUP after hearing the workspace.",
                     },
-                    "metadata": {"workspace": {"ignited": True}},
+                    "metadata": {
+                        "winner_rationale": "Workspace winner rationale appears here.",
+                        "importance_function": {
+                            "bottom_up_salience": 0.5,
+                            "top_down_relevance": 0.8,
+                            "salience_weight": 0.55,
+                            "relevance_weight": 0.45,
+                            "recurrence_bonus": 0.0,
+                            "workspace_adjustment": 1.0,
+                            "encoder": "HashingTextEncoder",
+                        },
+                        "workspace": {
+                            "ignited": True,
+                            "ignition_threshold": 0.25,
+                            "strength": 1.0,
+                        },
+                    },
                 },
                 "module_states": [
                     {
@@ -72,6 +88,18 @@ class QiyuanViewerTest(unittest.TestCase):
                             "action_hint": "PICKUP",
                             "content": {
                                 "summary": "Motor output language appears here.",
+                            },
+                            "rationale": "Module-level motor rationale appears here.",
+                            "metadata": {
+                                "importance_function": {
+                                    "bottom_up_salience": 0.5,
+                                    "top_down_relevance": 0.8,
+                                    "salience_weight": 0.55,
+                                    "relevance_weight": 0.45,
+                                    "recurrence_bonus": 0.0,
+                                    "workspace_adjustment": 1.0,
+                                    "encoder": "HashingTextEncoder",
+                                }
                             },
                         },
                     }
@@ -94,6 +122,9 @@ class QiyuanViewerTest(unittest.TestCase):
             self.assertIn("PICKUP", html)
             self.assertIn("Motor chose PICKUP", html)
             self.assertIn("Motor output language appears here.", html)
+            self.assertIn("Reasoning", html)
+            self.assertIn("Module-level motor rationale appears here.", html)
+            self.assertIn("score basis", html)
             self.assertIn("Experimenter", html)
             self.assertIn("sendPromptBtn", html)
 

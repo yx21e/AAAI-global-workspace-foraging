@@ -108,6 +108,12 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
             else None,
             "modules": [],
             "language_report": None,
+            "reasoning": {
+                "winner_rationale": "",
+                "score_basis": "Initial frame before module proposals.",
+                "ignition_basis": "",
+                "action_basis": "No simulator action has been selected yet.",
+            },
         }
     ]
 
@@ -135,8 +141,17 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
                     "relevance": proposal.get("goal_relevance_score"),
                     "action_hint": proposal.get("action_hint"),
                     "output_language": output_language,
+                    "rationale": proposal.get("rationale") or "",
+                    "importance_function": (proposal.get("metadata") or {}).get("importance_function") or {},
                 }
             )
+        reasoning = reasoning_payload(
+            broadcast=broadcast,
+            workspace=workspace,
+            action=action,
+            action_metadata=action_metadata,
+            modules=modules,
+        )
         steps.append(
             {
                 "frame_index": index,
@@ -156,6 +171,7 @@ def build_step_payload(envelopes: List[dict], actions: List[dict]) -> List[dict]
                 "carrying_resource": symbolic.get("carrying_resource"),
                 "modules": modules,
                 "language_report": language_report,
+                "reasoning": reasoning,
                 "action_record": actions[index - 1] if index - 1 < len(actions) else None,
             }
         )
@@ -189,6 +205,108 @@ def proposal_language(proposal: dict) -> str:
     if content is None:
         return ""
     return str(content)
+
+
+def reasoning_payload(
+    *,
+    broadcast: dict,
+    workspace: dict,
+    action: dict,
+    action_metadata: dict,
+    modules: List[dict],
+) -> dict:
+    winner = broadcast.get("winner_module")
+    winner_row = next((row for row in modules if row.get("module") == winner), None)
+    broadcast_metadata = broadcast.get("metadata") or {}
+    importance_function = (
+        (winner_row or {}).get("importance_function")
+        or broadcast_metadata.get("importance_function")
+        or {}
+    )
+    rationale = (
+        (winner_row or {}).get("rationale")
+        or broadcast_metadata.get("winner_rationale")
+        or fallback_rationale(workspace)
+    )
+    score_value = (
+        (winner_row or {}).get("importance")
+        if winner_row is not None
+        else broadcast.get("importance_score")
+    )
+    return {
+        "winner_rationale": rationale,
+        "score_basis": score_basis_text(score_value, importance_function),
+        "ignition_basis": ignition_basis_text(workspace),
+        "action_basis": action_basis_text(action, action_metadata, winner),
+    }
+
+
+def fallback_rationale(workspace: dict) -> str:
+    if workspace.get("maintained"):
+        return "No new proposal crossed threshold; the previous broadcast is maintained with decay."
+    if workspace.get("ignited") is False:
+        return "No proposal crossed the ignition threshold in this cycle."
+    return ""
+
+
+def score_basis_text(score_value, importance_function: dict) -> str:
+    if not importance_function:
+        if score_value is None:
+            return "No scored proposal is available for this frame."
+        return f"workspace score={format_score(score_value)}"
+    salience = importance_function.get("bottom_up_salience")
+    relevance = importance_function.get("top_down_relevance")
+    salience_weight = importance_function.get("salience_weight")
+    relevance_weight = importance_function.get("relevance_weight")
+    recurrence_bonus = importance_function.get("recurrence_bonus")
+    adjustment = importance_function.get("workspace_adjustment")
+    encoder = importance_function.get("encoder")
+    return (
+        f"importance={format_score(score_value)}; "
+        f"salience={format_score(salience)}*{format_score(salience_weight)} + "
+        f"relevance={format_score(relevance)}*{format_score(relevance_weight)}; "
+        f"recurrence_bonus={format_score(recurrence_bonus)}; "
+        f"workspace_adjustment={format_score(adjustment)}; "
+        f"encoder={encoder or '-'}"
+    )
+
+
+def ignition_basis_text(workspace: dict) -> str:
+    threshold = format_score(workspace.get("ignition_threshold"))
+    strength = format_score(workspace.get("strength"))
+    if workspace.get("ignited"):
+        return f"Winner crossed ignition threshold={threshold}; new broadcast strength={strength}."
+    if workspace.get("maintained"):
+        age = workspace.get("age")
+        return f"No new ignition; maintained previous broadcast with strength={strength}, age={age}."
+    return f"No proposal crossed ignition threshold={threshold}; workspace did not ignite."
+
+
+def action_basis_text(action: dict, action_metadata: dict, winner: Optional[str]) -> str:
+    route = action_metadata.get("action_route")
+    command = action.get("command") or action.get("action_type")
+    if route == "workspace_broadcast":
+        return f"Executed {command} from winner={winner} because the broadcast carried an action_hint."
+    if route == "non_workspace_motor_threshold":
+        return (
+            f"Executed {command} through the non-workspace motor threshold route "
+            f"(motor_importance={format_score(action_metadata.get('motor_importance'))}, "
+            f"threshold={format_score(action_metadata.get('motor_execution_threshold'))})."
+        )
+    if route == "forced_action":
+        return f"Executed forced action {command} from experiment config."
+    if route == "no_action_threshold_not_met":
+        return "No simulator action executed because the non-workspace motor threshold was not met."
+    if route == "no_workspace_action":
+        return "No simulator action executed because the winning broadcast had no action_hint."
+    return f"action_route={route or '-'}; command={command or '-'}"
+
+
+def format_score(value) -> str:
+    try:
+        return f"{float(value):.3f}"
+    except (TypeError, ValueError):
+        return "-"
 
 
 def render_html(payload: dict) -> str:
@@ -361,6 +479,9 @@ HTML_TEMPLATE = r"""<!doctype html>
       color: var(--blue);
       font-weight: 700;
     }
+    .reasoning .v {
+      white-space: pre-wrap;
+    }
     .module-list {
       display: grid;
       gap: 8px;
@@ -463,6 +584,19 @@ HTML_TEMPLATE = r"""<!doctype html>
       overflow-wrap: anywhere;
       white-space: pre-wrap;
     }
+    .module-rationale {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 8px;
+      padding-top: 4px;
+      color: #27313c;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+    .module-rationale span {
+      color: var(--muted);
+    }
     @media (max-width: 920px) {
       header {
         align-items: flex-start;
@@ -519,6 +653,10 @@ HTML_TEMPLATE = r"""<!doctype html>
       <div class="section">
         <h2>Workspace</h2>
         <div class="kv" id="workspacePanel"></div>
+      </div>
+      <div class="section">
+        <h2>Reasoning</h2>
+        <div class="kv reasoning" id="reasoningPanel"></div>
       </div>
       <div class="section">
         <h2>Modules</h2>
@@ -610,8 +748,19 @@ HTML_TEMPLATE = r"""<!doctype html>
             <div class="k">hint</div><div class="v">${html(row.action_hint)}</div>
           </div>
           <div class="module-output">${html(row.output_language)}</div>
+          <div class="module-rationale"><span>rationale</span>${html(row.rationale)}</div>
         </div>`;
       }).join('');
+    }
+
+    function renderReasoning(step) {
+      const reasoning = step.reasoning || {};
+      kv(document.getElementById('reasoningPanel'), [
+        ['winner rationale', reasoning.winner_rationale],
+        ['score basis', reasoning.score_basis],
+        ['ignition', reasoning.ignition_basis],
+        ['action route', reasoning.action_basis],
+      ]);
     }
 
     function render() {
@@ -637,6 +786,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         ['ignited', step.workspace_ignited],
         ['maintained', step.workspace_maintained],
       ]);
+      renderReasoning(step);
       renderModules(step);
       document.getElementById('reportPanel').textContent = step.language_report || '-';
       if (document.activeElement !== promptCycle) {

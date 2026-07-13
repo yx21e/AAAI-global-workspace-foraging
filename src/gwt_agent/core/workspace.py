@@ -60,6 +60,7 @@ class CentralWorkspace:
             action_hint=winner.action_hint,
             metadata={
                 **winner.metadata,
+                "winner_rationale": winner.rationale,
                 "workspace": {
                     "ignited": True,
                     "ignition_threshold": self.ignition_threshold,

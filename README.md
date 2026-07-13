@@ -24,6 +24,7 @@ Qiyuan ForagingEnv
   -> specialized modules produce ModuleProposal objects
      perception may use a multimodal model
      motor/language may use text-only models
+     each proposal includes output language, action_hint, confidence, and rationale
   -> deterministic AttentionGate
      bottom-up salience = private-input change
      top-down relevance = proposal similarity to task goal + previous broadcast
@@ -50,6 +51,8 @@ Important implementation boundaries:
   actions to Qiyuan.
 - The non-workspace motor route is off by default. When enabled, it represents
   an automatic/local action route and is logged separately from workspace actions.
+- The viewer's reasoning display is a concise decision-basis audit. It is not a
+  hidden chain-of-thought trace.
 
 ## Repository Layout
 
@@ -214,7 +217,9 @@ The viewer supports:
 - frame-by-frame replay
 - play/pause and timeline scrubber
 - workspace winner and winning output
+- reasoning panel with winner rationale, score basis, ignition basis, and action route
 - every module's score, action hint, summary, and observations
+- every module's concise rationale
 - experimenter prompt panel for pausing at a selected cycle
 
 When an experimenter prompt is submitted, the server reruns the integrated demo
@@ -225,6 +230,20 @@ with:
 ```
 
 and opens a new prompt-conditioned viewer.
+
+## Reasoning Display
+
+The current system already records a `rationale` field for each
+`ModuleProposal`. The viewer now surfaces that field in two places:
+
+- each module card shows the module's own concise rationale
+- the right-side Reasoning panel summarizes the workspace winner's rationale,
+  the deterministic importance-score breakdown, the ignition/maintenance
+  decision, and the action route used by `ActionResolver`
+
+This should be described as **reportable decision basis**, not full internal
+reasoning. The deterministic scoring terms remain external to the modules:
+modules do not set their own importance scores.
 
 ## Replay Historical Records
 
@@ -315,6 +334,8 @@ explicitly enabled.
   sequentially but treated as same-cycle proposals.
 - Do not claim learned latent workspace representations; the workspace message
   format is structured JSON/natural language for debugging and replay.
+- Do not claim access to full hidden model reasoning or chain-of-thought; only
+  concise module rationales and deterministic score metadata are logged.
 - Do not claim the automatic motor route is the workspace. It is logged as a
   separate route for automatic/non-workspace action experiments.
 
