@@ -261,6 +261,15 @@ PYTHONPATH=src:. python3 scripts/serve_qiyuan_viewer.py \
   --port 8765
 ```
 
+Or double-click the launcher in the project root:
+
+```text
+Open_GWT_Viewer.desktop
+```
+
+The launcher starts `all-compete-v3` by default. To launch a different existing
+run from a terminal, set `GWT_RUN_ID` before running `launch_interactive_viewer.sh`.
+
 Open:
 
 ```text

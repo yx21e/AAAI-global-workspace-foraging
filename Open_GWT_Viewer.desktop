@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Open GWT Viewer
+Comment=Start the interactive GWT viewer with map loading and prompt reruns
+Exec=/home/yx21e.fsu/AAAI_project/begining_stage/launch_interactive_viewer.sh
+Path=/home/yx21e.fsu/AAAI_project/begining_stage
+Terminal=true
+Icon=utilities-terminal
+Categories=Development;
