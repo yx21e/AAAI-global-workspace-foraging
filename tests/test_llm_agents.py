@@ -74,6 +74,8 @@ class LLMAgentTest(unittest.TestCase):
             "/tmp/map.png",
         )
         self.assertTrue(proposal.metadata["llm_agent"]["supports_images"])
+        self.assertEqual(proposal.content["global_map"], [["BASE", "AGENT", "RESOURCE"]])
+        self.assertEqual(proposal.content["base_position"], [0, 0])
 
     def test_perception_refreshes_targets_when_workspace_lacks_spatial_target(self):
         module = LLMPerceptionModule(client=MockLLMClient())
@@ -133,6 +135,74 @@ class LLMAgentTest(unittest.TestCase):
         self.assertEqual(proposal.module_name, "motor")
         self.assertIn(proposal.action_hint, {"RIGHT", "DOWN", "LEFT", "PICKUP", "NOOP"})
         self.assertIn("blocked directions", proposal.reflection)
+
+    def test_motor_uses_broadcast_global_map_for_route_planning(self):
+        module = LLMMotorModule(client=MockLLMClient())
+        grid = [
+            list("###############"),
+            list("#.........B...#"),
+            list("#..#..........#"),
+            list("#..#.....##...#"),
+            list("#.......#.....#"),
+            list("#....#.....#..#"),
+            list("#....#..#.....#"),
+            list("#..#....#.....#"),
+            list("#..##.........#"),
+            list("#...........#.#"),
+            list("#.....#.....#.#"),
+            list("#.....#..#....#"),
+            list("#.........##..#"),
+            list("#.....#..A#...#"),
+            list("###############"),
+        ]
+        global_map = [
+            [
+                {
+                    "#": "WALL",
+                    ".": "FLOOR",
+                    "B": "BASE",
+                    "A": "AGENT",
+                }[cell]
+                for cell in row
+            ]
+            for row in grid
+        ]
+        module_input = ModuleInput(
+            module_name="motor",
+            env_t=0,
+            cycle_t=80,
+            private_observation={
+                "agent_position": (9, 13),
+                "carrying_resource": True,
+                "nearby_obstacles": [(10, 13), (9, 14)],
+                "blocked_directions": {
+                    "UP": False,
+                    "DOWN": True,
+                    "LEFT": False,
+                    "RIGHT": True,
+                },
+            },
+            global_broadcast=WorkspaceBroadcast(
+                timestamp=79,
+                winner_module="perception",
+                content={
+                    "summary": "Spatial target refresh.",
+                    "global_map": global_map,
+                    "agent_position": [9, 13],
+                    "base_position": [10, 1],
+                    "resource_position": None,
+                },
+                importance_score=0.4,
+            ),
+            available_actions=["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"],
+            task_goal="collect one resource and return to base",
+        )
+
+        proposal = module.propose(module_input)
+
+        self.assertEqual(proposal.action_hint, "UP")
+        self.assertIn("planning_source=broadcast_global_map", proposal.content["observations"])
+        self.assertIn("broadcast global map", proposal.reflection)
 
     def test_language_llm_never_emits_simulator_action(self):
         module = LLMLanguageModule(client=MockLLMClient())

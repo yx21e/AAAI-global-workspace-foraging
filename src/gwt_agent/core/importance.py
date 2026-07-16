@@ -88,7 +88,7 @@ class DeterministicImportanceScorer:
     ) -> ProposalImportance:
         current_private = stable_text(salience_view(module_input.private_observation))
         previous_private = stable_text(salience_view(previous_private_input))
-        proposal_text = stable_text(proposal.content)
+        proposal_text = stable_text(relevance_view(proposal.content))
         context_text = self._context_text(module_input, last_broadcast)
 
         salience = self._change_amount(current_private, previous_private)
@@ -172,4 +172,24 @@ def salience_view(value):
             "nearby_obstacles": value.get("nearby_obstacles"),
             "action_success": value.get("action_success"),
         }
+    return value
+
+
+def relevance_view(value):
+    """Compact proposal content before top-down relevance scoring.
+
+    Modules may broadcast structured artifacts such as a full global map. Those
+    artifacts are useful downstream, but they can swamp the lexical signal used
+    by the deterministic sentence encoder. Keep summaries, observations, and
+    compact task coordinates while excluding bulky static layout fields.
+    """
+    if isinstance(value, dict):
+        compact = {}
+        for key, item in value.items():
+            if key in {"global_map", "wall_positions", "global_screenshot"}:
+                continue
+            compact[key] = relevance_view(item)
+        return compact
+    if isinstance(value, list):
+        return [relevance_view(item) for item in value]
     return value

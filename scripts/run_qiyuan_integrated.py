@@ -69,7 +69,7 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--target-resources", type=int, default=1)
-    parser.add_argument("--max-cycles", type=int, default=200)
+    parser.add_argument("--max-cycles", type=int, default=400)
     parser.add_argument("--run-id", default=None)
     parser.add_argument("--instruction", default=DEFAULT_INSTRUCTION)
     parser.add_argument(

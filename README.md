@@ -192,7 +192,7 @@ PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
   --map-preset auto \
   --map-variant auto \
   --target-resources 1 \
-  --max-cycles 220 \
+  --max-cycles 400 \
   --run-id current-demo \
   --agent-backend mock-llm \
   --allow-non-workspace-motor
@@ -258,7 +258,8 @@ Start the local interactive viewer server:
 ```bash
 PYTHONPATH=src:. python3 scripts/serve_qiyuan_viewer.py \
   --run-id current-demo \
-  --port 8765
+  --port 8765 \
+  --max-cycles 400
 ```
 
 Or double-click the launcher in the project root:
@@ -267,8 +268,9 @@ Or double-click the launcher in the project root:
 Open_GWT_Viewer.desktop
 ```
 
-The launcher starts `all-compete-v3` by default. To launch a different existing
-run from a terminal, set `GWT_RUN_ID` before running `launch_interactive_viewer.sh`.
+The launcher starts `all-compete-v3` with `GWT_MAX_CYCLES=400` by default. To
+launch a different existing run from a terminal, set `GWT_RUN_ID` before running
+`launch_interactive_viewer.sh`.
 
 Open:
 

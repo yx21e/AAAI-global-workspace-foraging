@@ -6,6 +6,7 @@ import json
 import mimetypes
 import os
 import re
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol
@@ -158,12 +159,22 @@ class MockLLMClient:
             tuple(item)
             for item in private_state.get("recent_positions", [])
         }
+        planned = None
+        if target is not None:
+            planned = choose_broadcast_map_action(
+                agent_pos=agent_pos,
+                target=target,
+                broadcast=user_payload.get("last_broadcast"),
+                blocked_directions=blocked,
+            )
 
         target_text = str(target) if target is not None else "no broadcast target"
         if target is None:
             action = "NOOP"
         elif not carrying and agent_pos == target:
             action = "PICKUP"
+        elif planned is not None:
+            action = planned
         else:
             action = choose_greedy_safe_action(
                 agent_pos,
@@ -201,6 +212,7 @@ class MockLLMClient:
                 f"base_position={broadcast_positions.get('base_position')}",
                 f"target_position={target}",
                 "target_source=workspace_broadcast" if target is not None else "target_source=unavailable",
+                "planning_source=broadcast_global_map" if planned is not None else "planning_source=local_greedy",
                 f"heard_broadcast={broadcast_summary}",
                 f"blocked_directions={blocked}",
             ],
@@ -212,6 +224,7 @@ class MockLLMClient:
             ),
             "reflection": (
                 f"I am at {agent_pos}, pursuing {goal}, and using the broadcast target {target_text}. "
+                f"Planning source is {'broadcast global map' if planned is not None else 'local greedy fallback'}. "
                 f"Local blocked directions are {blocked}; proposed action {action} has blocked={is_blocked}. "
                 "If this action still fails in the environment, the mismatch should be inspected in the "
                 "motor blocked-direction input or simulator transition."
@@ -744,6 +757,105 @@ def choose_greedy_safe_action(
     if safe:
         return safe[0][0]
     return "NOOP"
+
+
+def choose_broadcast_map_action(
+    *,
+    agent_pos: tuple,
+    target: tuple,
+    broadcast,
+    blocked_directions: JsonDict,
+) -> Optional[str]:
+    grid = extract_global_map_from_broadcast(broadcast)
+    if not grid:
+        return None
+    path = shortest_path_on_global_map(grid=grid, start=agent_pos, target=target)
+    if len(path) < 2:
+        return None
+    next_position = path[1]
+    action = direction_between(agent_pos, next_position)
+    if action is None:
+        return None
+    if blocked_directions.get(action, False):
+        return None
+    return action
+
+
+def extract_global_map_from_broadcast(value):
+    if not isinstance(value, dict):
+        return None
+    content = value.get("content")
+    if not isinstance(content, dict):
+        return None
+    grid = content.get("global_map")
+    if not isinstance(grid, list) or not grid:
+        return None
+    cleaned = []
+    width = None
+    for row in grid:
+        if not isinstance(row, list) or not row:
+            return None
+        text_row = [str(cell) for cell in row]
+        width = width or len(text_row)
+        if len(text_row) != width:
+            return None
+        cleaned.append(text_row)
+    return cleaned
+
+
+def shortest_path_on_global_map(*, grid, start: tuple, target: tuple):
+    if not in_bounds(grid, start) or not in_bounds(grid, target):
+        return []
+    if is_wall(grid, start) or is_wall(grid, target):
+        return []
+    queue = deque([start])
+    previous = {start: None}
+    while queue:
+        position = queue.popleft()
+        if position == target:
+            break
+        for next_position in map_neighbors(grid, position):
+            if next_position in previous:
+                continue
+            previous[next_position] = position
+            queue.append(next_position)
+    if target not in previous:
+        return []
+    path = []
+    current = target
+    while current is not None:
+        path.append(current)
+        current = previous[current]
+    return list(reversed(path))
+
+
+def map_neighbors(grid, position: tuple):
+    x, y = position
+    for candidate in ((x, y - 1), (x + 1, y), (x, y + 1), (x - 1, y)):
+        if in_bounds(grid, candidate) and not is_wall(grid, candidate):
+            yield candidate
+
+
+def in_bounds(grid, position: tuple) -> bool:
+    x, y = position
+    return y >= 0 and x >= 0 and y < len(grid) and x < len(grid[y])
+
+
+def is_wall(grid, position: tuple) -> bool:
+    x, y = position
+    return str(grid[y][x]).upper() == "WALL"
+
+
+def direction_between(start: tuple, end: tuple) -> Optional[str]:
+    sx, sy = start
+    ex, ey = end
+    delta = (ex - sx, ey - sy)
+    return {
+        (0, -1): "UP",
+        (1, 0): "RIGHT",
+        (0, 1): "DOWN",
+        (-1, 0): "LEFT",
+    }.get(delta)
 
 
 def image_to_data_url(path: str) -> str:

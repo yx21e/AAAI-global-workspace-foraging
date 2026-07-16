@@ -152,6 +152,27 @@ class LLMPerceptionModule(LLMModule):
             ),
         )
 
+    def _content_from_response(self, response: dict) -> dict:
+        content = super()._content_from_response(response)
+        private = getattr(self, "_current_private_observation", None)
+        if isinstance(private, dict):
+            for key in (
+                "global_map",
+                "agent_position",
+                "resource_position",
+                "base_position",
+                "wall_positions",
+                "grid_size",
+                "carrying_resource",
+            ):
+                if key in private:
+                    content[key] = to_jsonable(private.get(key))
+        return content
+
+    def _payload(self, module_input: ModuleInput) -> dict:
+        self._current_private_observation = module_input.private_observation
+        return super()._payload(module_input)
+
 
 class LLMMotorModule(LLMModule):
     """Motor center: nearby obstacles + previous broadcast -> candidate action."""

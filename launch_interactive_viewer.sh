@@ -5,6 +5,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUN_ID="${GWT_RUN_ID:-all-compete-v3}"
 HOST="${GWT_HOST:-127.0.0.1}"
 START_PORT="${GWT_PORT:-8765}"
+MAX_CYCLES="${GWT_MAX_CYCLES:-400}"
 
 cd "$PROJECT_ROOT"
 
@@ -40,6 +41,7 @@ URL="http://${HOST}:${PORT}/"
 echo "Starting interactive GWT viewer"
 echo "Project: ${PROJECT_ROOT}"
 echo "Run id:  ${RUN_ID}"
+echo "Cycles:  ${MAX_CYCLES}"
 echo "URL:     ${URL}"
 echo
 echo "Use the browser page to load maps or rerun with language prompts."
@@ -51,4 +53,5 @@ PYTHONPATH=src:. python3 scripts/serve_qiyuan_viewer.py \
   --run-id "$RUN_ID" \
   --host "$HOST" \
   --port "$PORT" \
+  --max-cycles "$MAX_CYCLES" \
   --open
