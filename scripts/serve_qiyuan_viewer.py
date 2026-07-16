@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+from gwt_agent.ui.qiyuan_viewer import build_viewer_payload
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUN_DIR = PROJECT_ROOT / "runs" / "qiyuan_integrated"
@@ -170,11 +172,17 @@ def run_prompt_rerun(
     viewer_path = config.run_dir / f"{new_run_id}_viewer.html"
     if not viewer_path.exists():
         raise FileNotFoundError(f"Rerun finished but viewer was not created: {viewer_path}")
+    payload = build_viewer_payload(
+        run_dir=str(config.run_dir),
+        run_id=new_run_id,
+        viewer_dir=str(config.run_dir),
+    )
     return {
         "ok": True,
         "run_id": new_run_id,
         "viewer_url": f"/{viewer_path.name}",
         "summary_url": f"/{new_run_id}_summary.json",
+        "payload": payload,
         "stdout": completed.stdout,
     }
 

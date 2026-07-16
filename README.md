@@ -266,7 +266,8 @@ The viewer supports:
 - reasoning panel with winner rationale/reflection, score basis, ignition basis, and action route
 - every module's score, action hint, summary, and observations
 - every module's concise rationale and reflection
-- experimenter prompt panel for pausing at a selected cycle
+- experimenter prompt panel for pausing at the selected cycle and sending a
+  language input to the language module
 
 When an experimenter prompt is submitted, the server reruns the integrated demo
 with:
@@ -275,7 +276,12 @@ with:
 --pause-language-at CYCLE=PROMPT
 ```
 
-and opens a new prompt-conditioned viewer.
+The current browser page is then updated in place with the new prompt-conditioned
+run payload. The frames after the selected cycle are recomputed; the old viewer
+is no longer just a retrospective recording once the server is active. This does
+not add a special score bonus to language. The prompt enters only through the
+language module's private input, and the same deterministic salience/relevance
+importance function decides whether the language reply wins workspace.
 
 ## Reasoning and Reflection Display
 

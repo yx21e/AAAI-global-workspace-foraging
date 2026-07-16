@@ -31,11 +31,34 @@ def build_viewer(
 ) -> Path:
     run_path = Path(run_dir).expanduser().resolve()
     paths = default_run_paths(run_path, run_id)
+    viewer_path = Path(output_path).expanduser().resolve() if output_path else paths["viewer"]
+
+    payload = build_viewer_payload(
+        run_dir=run_dir,
+        run_id=run_id,
+        viewer_dir=str(viewer_path.parent),
+        frames_dir=frames_dir,
+    )
+
+    viewer_path.parent.mkdir(parents=True, exist_ok=True)
+    viewer_path.write_text(render_html(payload), encoding="utf-8")
+    return viewer_path
+
+
+def build_viewer_payload(
+    *,
+    run_dir: str,
+    run_id: str,
+    viewer_dir: Optional[str] = None,
+    frames_dir: Optional[str] = None,
+) -> dict:
+    run_path = Path(run_dir).expanduser().resolve()
+    paths = default_run_paths(run_path, run_id)
     summary_path = paths["summary"]
     envelope_path = paths["envelopes"]
     action_path = paths["actions"]
     frame_path = Path(frames_dir).expanduser().resolve() if frames_dir else paths["frames"]
-    viewer_path = Path(output_path).expanduser().resolve() if output_path else paths["viewer"]
+    base_path = Path(viewer_dir).expanduser().resolve() if viewer_dir else run_path
 
     if not summary_path.exists():
         raise FileNotFoundError(f"Missing summary file: {summary_path}")
@@ -53,22 +76,18 @@ def build_viewer(
     if not frames:
         raise ValueError(f"No PNG frames found under {frame_path}")
 
-    payload = {
+    return {
         "summary": summary,
         "frames": [
             {
                 "index": index,
-                "src": relative_path(frame, viewer_path.parent),
+                "src": relative_path(frame, base_path),
                 "name": frame.name,
             }
             for index, frame in enumerate(frames)
         ],
         "steps": build_step_payload(envelopes, actions),
     }
-
-    viewer_path.parent.mkdir(parents=True, exist_ok=True)
-    viewer_path.write_text(render_html(payload), encoding="utf-8")
-    return viewer_path
 
 
 def frame_sort_key(path: Path):
@@ -801,7 +820,7 @@ HTML_TEMPLATE = r"""<!doctype html>
     </div>
   </div>
   <script>
-    const data = __PAYLOAD__;
+    let data = __PAYLOAD__;
     const image = document.getElementById('frameImage');
     const scrubber = document.getElementById('scrubber');
     const playBtn = document.getElementById('playBtn');
@@ -912,6 +931,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       fullTextSeq = 0;
       const frame = data.frames[index];
       const step = data.steps[Math.min(index, data.steps.length - 1)] || {};
+      if (!frame) return;
       image.src = frame.src;
       scrubber.value = index;
 
@@ -939,6 +959,27 @@ HTML_TEMPLATE = r"""<!doctype html>
         promptCycle.value = step.cycle_t === null || step.cycle_t === undefined ? 0 : step.cycle_t;
       }
       refreshRerunCommand();
+    }
+
+    function renderSummary() {
+      document.getElementById('title').textContent = data.summary.run_id || 'Qiyuan GWT Demo';
+      document.getElementById('donePill').innerHTML = data.summary.done ? '<span class="ok">done</span>' : '<span class="bad">not done</span>';
+      document.getElementById('cyclePill').textContent = `cycles ${data.summary.cycle_count}`;
+      document.getElementById('resourcePill').textContent = `resources ${data.summary.resources_collected}`;
+      document.getElementById('difficultyPill').textContent = `difficulty ${data.summary.difficulty}`;
+      scrubber.max = Math.max(0, data.frames.length - 1);
+    }
+
+    function replaceRunPayload(nextPayload, targetCycle) {
+      stop();
+      data = nextPayload;
+      renderSummary();
+      const targetIndex = data.steps.findIndex(step => Number(step.cycle_t) === Number(targetCycle));
+      const nextIndex = targetIndex >= 0 ? targetIndex : Math.min(index, data.frames.length - 1);
+      setIndex(nextIndex);
+      experimenterPrompt.value = '';
+      refreshRerunCommand();
+      promptStatus.textContent = `Updated current viewer with ${data.summary.run_id}`;
     }
 
     function openFullText(id) {
@@ -1060,14 +1101,15 @@ HTML_TEMPLATE = r"""<!doctype html>
         return;
       }
       sendPromptBtn.disabled = true;
-      promptStatus.textContent = 'Running...';
+      promptStatus.textContent = 'Rerunning from this language input...';
+      const targetCycle = Number(promptCycle.value || 0);
       try {
         const response = await fetch('/api/rerun', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
             run_id: data.summary.run_id,
-            cycle: Number(promptCycle.value || 0),
+            cycle: targetCycle,
             prompt,
           }),
         });
@@ -1075,7 +1117,12 @@ HTML_TEMPLATE = r"""<!doctype html>
         if (!response.ok || !result.ok) {
           throw new Error(result.error || `HTTP ${response.status}`);
         }
-        promptStatus.textContent = `Created ${result.run_id}`;
+        if (result.payload) {
+          replaceRunPayload(result.payload, targetCycle);
+          sendPromptBtn.disabled = false;
+          return;
+        }
+        promptStatus.textContent = `Created ${result.run_id}; opening new viewer.`;
         window.location.href = result.viewer_url;
       } catch (error) {
         promptStatus.textContent = String(error.message || error);
@@ -1094,12 +1141,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       }
     }
 
-    document.getElementById('title').textContent = data.summary.run_id || 'Qiyuan GWT Demo';
-    document.getElementById('donePill').innerHTML = data.summary.done ? '<span class="ok">done</span>' : '<span class="bad">not done</span>';
-    document.getElementById('cyclePill').textContent = `cycles ${data.summary.cycle_count}`;
-    document.getElementById('resourcePill').textContent = `resources ${data.summary.resources_collected}`;
-    document.getElementById('difficultyPill').textContent = `difficulty ${data.summary.difficulty}`;
-    scrubber.max = Math.max(0, data.frames.length - 1);
+    renderSummary();
     scrubber.addEventListener('input', event => setIndex(Number(event.target.value)));
     document.getElementById('firstBtn').addEventListener('click', () => setIndex(0));
     document.getElementById('prevBtn').addEventListener('click', () => setIndex(index - 1));

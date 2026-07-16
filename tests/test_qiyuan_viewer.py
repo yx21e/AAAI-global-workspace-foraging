@@ -7,6 +7,7 @@ from pathlib import Path
 
 from scripts.serve_qiyuan_viewer import ServerConfig, build_rerun_command
 from gwt_agent.ui.qiyuan_viewer import (
+    build_viewer_payload,
     build_viewer,
     competition_basis_text,
     proposal_language,
@@ -162,6 +163,7 @@ class QiyuanViewerTest(unittest.TestCase):
             )
 
             viewer = build_viewer(run_dir=str(root), run_id=run_id)
+            payload = build_viewer_payload(run_dir=str(root), run_id=run_id)
 
             html = viewer.read_text(encoding="utf-8")
             self.assertIn(run_id, html)
@@ -176,6 +178,10 @@ class QiyuanViewerTest(unittest.TestCase):
             self.assertIn("score basis", html)
             self.assertIn("Experimenter", html)
             self.assertIn("sendPromptBtn", html)
+            self.assertIn("replaceRunPayload", html)
+            self.assertEqual(payload["summary"]["run_id"], run_id)
+            self.assertEqual(len(payload["frames"]), 2)
+            self.assertEqual(payload["steps"][1]["workspace_winner"], "motor")
 
     def test_prompt_rerun_command_preserves_run_settings(self):
         config = ServerConfig(
