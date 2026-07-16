@@ -179,6 +179,7 @@ class QiyuanViewerTest(unittest.TestCase):
             self.assertIn("Experimenter", html)
             self.assertIn("sendPromptBtn", html)
             self.assertIn("replaceRunPayload", html)
+            self.assertIn("Server required", html)
             self.assertEqual(payload["summary"]["run_id"], run_id)
             self.assertEqual(len(payload["frames"]), 2)
             self.assertEqual(payload["steps"][1]["workspace_winner"], "motor")
@@ -229,6 +230,35 @@ class QiyuanViewerTest(unittest.TestCase):
         self.assertIn("--workspace-adjustment-policy", command)
         self.assertIn("anti_echo", command)
         self.assertIn("--allow-non-workspace-motor", command)
+
+    def test_prompt_rerun_command_keeps_old_runs_on_qiyuan_default_map(self):
+        config = ServerConfig(
+            run_id="old-viewer-test",
+            run_dir=Path("/tmp/gwt-runs"),
+            python_executable="python3",
+            rerun_timeout=30,
+            max_cycles=12,
+        )
+        summary = {
+            "qiyuan_path": "/tmp/qiyuan",
+            "difficulty": 2,
+            "seed": 7,
+            "target_resources": 1,
+            "experimenter_instruction": "collect one resource",
+            "agent_backend": "mock-llm",
+        }
+
+        command = build_rerun_command(
+            config=config,
+            summary=summary,
+            new_run_id="old-viewer-test-prompt-c4",
+            cycle=4,
+            prompt="What did you hear?",
+        )
+
+        self.assertIn("--map-preset", command)
+        self.assertEqual(command[command.index("--map-preset") + 1], "qiyuan-default")
+        self.assertNotIn("--map-variant", command)
 
 
 if __name__ == "__main__":

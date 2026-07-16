@@ -648,10 +648,28 @@ HTML_TEMPLATE = r"""<!doctype html>
     }
     .status {
       min-height: 18px;
+      padding: 6px 8px;
+      border: 1px solid transparent;
+      border-radius: 6px;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
       white-space: pre-wrap;
+    }
+    .status.busy {
+      border-color: #d8c47a;
+      background: #fff8d9;
+      color: #5d4b00;
+    }
+    .status.ok {
+      border-color: #a8d5b3;
+      background: #edf8ef;
+      color: #1e5f32;
+    }
+    .status.error {
+      border-color: #e3a5a5;
+      background: #fff0f0;
+      color: #8d2727;
     }
     .module-output {
       margin-top: 2px;
@@ -802,8 +820,8 @@ HTML_TEMPLATE = r"""<!doctype html>
           <label for="experimenterPrompt">Prompt</label>
           <textarea id="experimenterPrompt"></textarea>
           <div class="prompt-actions">
-            <button id="sendPromptBtn" class="wide" title="Rerun with this language prompt">Run</button>
-            <button id="copyCommandBtn" class="wide" title="Copy rerun command">Copy</button>
+            <button id="sendPromptBtn" class="wide" type="button" title="Rerun with this language prompt">Run</button>
+            <button id="copyCommandBtn" class="wide" type="button" title="Copy rerun command">Copy</button>
           </div>
           <pre class="command" id="rerunCommand"></pre>
           <div class="status" id="promptStatus"></div>
@@ -986,7 +1004,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       setIndex(nextIndex);
       experimenterPrompt.value = '';
       refreshRerunCommand();
-      promptStatus.textContent = `Updated current viewer with ${data.summary.run_id}`;
+      setPromptStatus(`Updated current viewer with ${data.summary.run_id}`, 'ok');
     }
 
     function openFullText(id) {
@@ -1054,11 +1072,14 @@ HTML_TEMPLATE = r"""<!doctype html>
       argPair(args, '--qiyuan-path', summary.qiyuan_path);
       argPair(args, '--difficulty', summary.difficulty);
       argPair(args, '--seed', summary.seed);
-      argPair(args, '--map-preset', summary.resolved_map_preset || summary.map_preset);
+      const mapPreset = summary.resolved_map_preset || summary.map_preset || 'qiyuan-default';
+      argPair(args, '--map-preset', mapPreset);
       const mapVariant = summary.resolved_map_variant === null || summary.resolved_map_variant === undefined
         ? summary.map_variant
         : summary.resolved_map_variant;
-      argPair(args, '--map-variant', mapVariant);
+      if (mapPreset !== 'qiyuan-default') {
+        argPair(args, '--map-variant', mapVariant);
+      }
       argPair(args, '--target-resources', summary.target_resources);
       argPair(args, '--max-cycles', summary.max_cycles || Math.max(summary.cycle_count || 0, 1));
       argPair(args, '--run-id', `${summary.run_id || 'run'}-prompt-c${cycle}`);
@@ -1097,6 +1118,16 @@ HTML_TEMPLATE = r"""<!doctype html>
       rerunCommand.textContent = buildRerunCommand();
     }
 
+    function setPromptStatus(message, kind) {
+      promptStatus.textContent = message || '';
+      promptStatus.className = `status ${kind || ''}`.trim();
+    }
+
+    function setPromptBusy(isBusy) {
+      sendPromptBtn.disabled = isBusy;
+      sendPromptBtn.textContent = isBusy ? 'Running...' : 'Run';
+    }
+
     function canUsePromptServer() {
       return window.location.protocol === 'http:' || window.location.protocol === 'https:';
     }
@@ -1104,16 +1135,16 @@ HTML_TEMPLATE = r"""<!doctype html>
     async function submitPrompt() {
       const prompt = experimenterPrompt.value.trim();
       if (!prompt) {
-        promptStatus.textContent = 'Prompt is empty.';
+        setPromptStatus('Prompt is empty.', 'error');
         return;
       }
       refreshRerunCommand();
       if (!canUsePromptServer()) {
-        promptStatus.textContent = 'Open this viewer through scripts/serve_qiyuan_viewer.py to run from the button.';
+        setPromptStatus('This is a static viewer. Start scripts/serve_qiyuan_viewer.py and open http://127.0.0.1:8765/ to run prompts.', 'error');
         return;
       }
-      sendPromptBtn.disabled = true;
-      promptStatus.textContent = 'Rerunning from this language input...';
+      setPromptBusy(true);
+      setPromptStatus('Rerunning from this language input...', 'busy');
       const targetCycle = Number(promptCycle.value || 0);
       try {
         const response = await fetch('/api/rerun', {
@@ -1125,20 +1156,28 @@ HTML_TEMPLATE = r"""<!doctype html>
             prompt,
           }),
         });
-        const result = await response.json();
+        const raw = await response.text();
+        let result = {};
+        try {
+          result = JSON.parse(raw);
+        } catch (error) {
+          throw new Error(
+            'The rerun API did not return JSON. Open this viewer through scripts/serve_qiyuan_viewer.py, not a static file or generic web server.'
+          );
+        }
         if (!response.ok || !result.ok) {
           throw new Error(result.error || `HTTP ${response.status}`);
         }
         if (result.payload) {
           replaceRunPayload(result.payload, targetCycle);
-          sendPromptBtn.disabled = false;
+          setPromptBusy(false);
           return;
         }
-        promptStatus.textContent = `Created ${result.run_id}; opening new viewer.`;
+        setPromptStatus(`Created ${result.run_id}; opening new viewer.`, 'ok');
         window.location.href = result.viewer_url;
       } catch (error) {
-        promptStatus.textContent = String(error.message || error);
-        sendPromptBtn.disabled = false;
+        setPromptStatus(String(error.message || error), 'error');
+        setPromptBusy(false);
       }
     }
 
@@ -1147,9 +1186,19 @@ HTML_TEMPLATE = r"""<!doctype html>
       const command = rerunCommand.textContent;
       try {
         await navigator.clipboard.writeText(command);
-        promptStatus.textContent = 'Command copied.';
+        setPromptStatus('Command copied.', 'ok');
       } catch (error) {
-        promptStatus.textContent = command;
+        setPromptStatus(command, 'busy');
+      }
+    }
+
+    function initializePromptControls() {
+      if (!canUsePromptServer()) {
+        sendPromptBtn.disabled = true;
+        sendPromptBtn.textContent = 'Server required';
+        setPromptStatus('Static viewer: start scripts/serve_qiyuan_viewer.py and open the local http URL to run prompts.', 'error');
+      } else {
+        setPromptStatus('Ready for experimenter prompt.', 'ok');
       }
     }
 
@@ -1188,6 +1237,7 @@ HTML_TEMPLATE = r"""<!doctype html>
         play();
       }
     });
+    initializePromptControls();
     render();
   </script>
 </body>

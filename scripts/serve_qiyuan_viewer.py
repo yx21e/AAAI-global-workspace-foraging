@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-from gwt_agent.ui.qiyuan_viewer import build_viewer_payload
+from gwt_agent.ui.qiyuan_viewer import build_viewer, build_viewer_payload
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +85,22 @@ def add_arg(command: list[str], flag: str, value: Any) -> None:
     command.extend([flag, str(value)])
 
 
+def rerun_map_preset(summary: Dict[str, Any]) -> Optional[str]:
+    if summary.get("resolved_map_preset"):
+        return str(summary["resolved_map_preset"])
+    if "map_preset" in summary:
+        value = summary.get("map_preset")
+        return str(value) if value else None
+    return "qiyuan-default"
+
+
+def rerun_map_variant(summary: Dict[str, Any]) -> Optional[Any]:
+    resolved_variant = summary.get("resolved_map_variant")
+    if resolved_variant is not None:
+        return resolved_variant
+    return summary.get("map_variant")
+
+
 def build_rerun_command(
     *,
     config: ServerConfig,
@@ -101,13 +117,10 @@ def build_rerun_command(
     add_arg(command, "--qiyuan-path", summary.get("qiyuan_path"))
     add_arg(command, "--difficulty", summary.get("difficulty", 1))
     add_arg(command, "--seed", summary.get("seed", 7))
-    add_arg(command, "--map-preset", summary.get("resolved_map_preset") or summary.get("map_preset"))
-    resolved_variant = summary.get("resolved_map_variant")
-    add_arg(
-        command,
-        "--map-variant",
-        resolved_variant if resolved_variant is not None else summary.get("map_variant"),
-    )
+    map_preset = rerun_map_preset(summary)
+    add_arg(command, "--map-preset", map_preset)
+    if map_preset != "qiyuan-default":
+        add_arg(command, "--map-variant", rerun_map_variant(summary))
     add_arg(command, "--target-resources", summary.get("target_resources", 1))
     add_arg(command, "--max-cycles", max_cycles)
     add_arg(command, "--run-id", new_run_id)
@@ -259,6 +272,7 @@ def main() -> None:
     args = parse_args()
     run_dir = Path(args.run_dir).expanduser().resolve()
     load_summary(run_dir, args.run_id)
+    build_viewer(run_dir=str(run_dir), run_id=args.run_id)
     config = ServerConfig(
         run_id=args.run_id,
         run_dir=run_dir,
