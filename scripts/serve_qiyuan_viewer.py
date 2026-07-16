@@ -101,6 +101,13 @@ def build_rerun_command(
     add_arg(command, "--qiyuan-path", summary.get("qiyuan_path"))
     add_arg(command, "--difficulty", summary.get("difficulty", 1))
     add_arg(command, "--seed", summary.get("seed", 7))
+    add_arg(command, "--map-preset", summary.get("resolved_map_preset") or summary.get("map_preset"))
+    resolved_variant = summary.get("resolved_map_variant")
+    add_arg(
+        command,
+        "--map-variant",
+        resolved_variant if resolved_variant is not None else summary.get("map_variant"),
+    )
     add_arg(command, "--target-resources", summary.get("target_resources", 1))
     add_arg(command, "--max-cycles", max_cycles)
     add_arg(command, "--run-id", new_run_id)

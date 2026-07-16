@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from gwt_agent.core.types import EnvironmentState
 from gwt_agent.envs.adapter import EnvironmentAdapter
+from gwt_agent.envs.map_variants import AUTO, apply_map_variant_to_env, resolve_map_variant
 
 
 FORAGING_ACTIONS = ["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"]
@@ -24,14 +25,21 @@ class ForagingEnvAdapter(EnvironmentAdapter):
         local_view_radius: Optional[int] = None,
         experimenter_instruction: str = "collect_resource_and_return",
         target_resources: int = 1,
+        map_preset: str = AUTO,
+        map_variant: Optional[object] = AUTO,
+        map_variant_seed: Optional[int] = None,
     ) -> None:
         self.env = env
         self.difficulty = difficulty
         self.local_view_radius = local_view_radius
         self.experimenter_instruction = experimenter_instruction
         self.target_resources = target_resources
+        self.map_preset = map_preset
+        self.map_variant = map_variant
+        self.map_variant_seed = map_variant_seed
         self._last_state: Optional[Dict[str, Any]] = None
         self.episode_grid: Optional[List[List[int]]] = None
+        self.map_variant_metadata: Optional[Dict[str, Any]] = None
 
     def reset(self) -> EnvironmentState:
         kwargs = {"difficulty": self.difficulty}
@@ -41,6 +49,17 @@ class ForagingEnvAdapter(EnvironmentAdapter):
             state = self.env.reset(**kwargs)
         except TypeError:
             state = self.env.reset(difficulty=self.difficulty)
+        variant = resolve_map_variant(
+            preset=self.map_preset,
+            difficulty=self.difficulty,
+            variant=self.map_variant,
+            seed=self.map_variant_seed,
+        )
+        if variant is not None:
+            state = apply_map_variant_to_env(self.env, variant)
+            self.map_variant_metadata = variant.metadata()
+        else:
+            self.map_variant_metadata = None
         if hasattr(self.env, "get_grid"):
             self.episode_grid = self.env.get_grid()
         else:
@@ -113,6 +132,7 @@ class ForagingEnvAdapter(EnvironmentAdapter):
                 "env_name": "qiyuan_foraging",
                 "difficulty": self.difficulty,
                 "target_resources": self.target_resources,
+                "map_variant": self.map_variant_metadata,
                 "action_success": state.get("action_success"),
                 "qiyuan_episode_grid": self.episode_grid,
                 "qiyuan_playback_api": {

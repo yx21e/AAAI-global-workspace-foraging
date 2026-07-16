@@ -753,6 +753,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       <span class="pill" id="cyclePill"></span>
       <span class="pill" id="resourcePill"></span>
       <span class="pill" id="difficultyPill"></span>
+      <span class="pill" id="mapPill"></span>
     </div>
   </header>
   <main>
@@ -967,6 +968,12 @@ HTML_TEMPLATE = r"""<!doctype html>
       document.getElementById('cyclePill').textContent = `cycles ${data.summary.cycle_count}`;
       document.getElementById('resourcePill').textContent = `resources ${data.summary.resources_collected}`;
       document.getElementById('difficultyPill').textContent = `difficulty ${data.summary.difficulty}`;
+      const resolvedVariant = data.summary.resolved_map_variant;
+      const resolvedPreset = data.summary.resolved_map_preset || data.summary.map_preset || 'qiyuan-default';
+      const mapLabel = resolvedVariant === null || resolvedVariant === undefined
+        ? resolvedPreset
+        : `${resolvedPreset} v${resolvedVariant}`;
+      document.getElementById('mapPill').textContent = `map ${mapLabel}`;
       scrubber.max = Math.max(0, data.frames.length - 1);
     }
 
@@ -1047,6 +1054,11 @@ HTML_TEMPLATE = r"""<!doctype html>
       argPair(args, '--qiyuan-path', summary.qiyuan_path);
       argPair(args, '--difficulty', summary.difficulty);
       argPair(args, '--seed', summary.seed);
+      argPair(args, '--map-preset', summary.resolved_map_preset || summary.map_preset);
+      const mapVariant = summary.resolved_map_variant === null || summary.resolved_map_variant === undefined
+        ? summary.map_variant
+        : summary.resolved_map_variant;
+      argPair(args, '--map-variant', mapVariant);
       argPair(args, '--target-resources', summary.target_resources);
       argPair(args, '--max-cycles', summary.max_cycles || Math.max(summary.cycle_count || 0, 1));
       argPair(args, '--run-id', `${summary.run_id || 'run'}-prompt-c${cycle}`);

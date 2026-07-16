@@ -189,6 +189,8 @@ PYTHONPATH=src python3 scripts/run_qiyuan_integrated.py \
   --qiyuan-path /home/yx21e.fsu/AAAI_project/qiyuan_foraging_env \
   --difficulty 2 \
   --seed 7 \
+  --map-preset auto \
+  --map-variant auto \
   --target-resources 1 \
   --max-cycles 220 \
   --run-id current-demo \
@@ -208,6 +210,13 @@ runs/qiyuan_integrated/current-demo_frames/
 runs/qiyuan_integrated/current-demo_perception_inputs/
 runs/qiyuan_integrated/current-demo_viewer.html
 ```
+
+For difficulty 2, `--map-preset auto` uses a five-map preset instead of a
+single fixed layout. `--map-variant auto` selects `seed % 5`; set
+`--map-variant 0`, `1`, `2`, `3`, or `4` to force a particular map. Each
+variant changes the base position, resource position, and a small number of
+interior obstacles. The resolved map variant is written to the summary, and the
+episode grid is still saved for exact replay.
 
 The episode grid is saved once using Qiyuan's `get_grid()` API and also embedded
 in each trace state's `info.qiyuan_episode_grid`. Replay uses Qiyuan's

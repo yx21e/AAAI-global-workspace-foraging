@@ -17,6 +17,7 @@ from gwt_agent.core.logger import TraceLogger
 from gwt_agent.core.router import InputRouter
 from gwt_agent.core.runner import WorkspaceRunner
 from gwt_agent.envs.foraging_adapter import ForagingEnvAdapter
+from gwt_agent.envs.map_variants import AUTO, DIFFICULTY2_FIVE, QIYUAN_DEFAULT
 from gwt_agent.envs.qiyuan_loader import load_foraging_env_class
 from gwt_agent.llm.client import build_llm_client
 from gwt_agent.modules.language import LanguageReportModule
@@ -50,6 +51,23 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--difficulty", type=int, default=1)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument(
+        "--map-preset",
+        choices=[AUTO, QIYUAN_DEFAULT, DIFFICULTY2_FIVE],
+        default=AUTO,
+        help=(
+            "Map source. auto uses five reproducible variants for difficulty 2 "
+            "and Qiyuan's default generator for other difficulties."
+        ),
+    )
+    parser.add_argument(
+        "--map-variant",
+        default=AUTO,
+        help=(
+            "Map variant id for --map-preset difficulty2-five. Use 0-4, or auto "
+            "to select seed modulo five."
+        ),
+    )
     parser.add_argument("--target-resources", type=int, default=1)
     parser.add_argument("--max-cycles", type=int, default=200)
     parser.add_argument("--run-id", default=None)
@@ -168,6 +186,9 @@ def main() -> None:
         difficulty=args.difficulty,
         experimenter_instruction=args.instruction,
         target_resources=args.target_resources,
+        map_preset=args.map_preset,
+        map_variant=args.map_variant,
+        map_variant_seed=args.seed,
     )
     modules, resolved_backend = build_modules(args)
     runner = WorkspaceRunner(
@@ -227,11 +248,20 @@ def main() -> None:
 
     final_state = traces[-1].next_env_state if traces else initial_state
     final_symbolic = final_state.symbolic_state if final_state else {}
+    map_variant_metadata = adapter.map_variant_metadata or {}
     summary = {
         "run_id": run_id,
         "qiyuan_path": str(Path(args.qiyuan_path).resolve()),
         "difficulty": args.difficulty,
         "seed": args.seed,
+        "map_preset": args.map_preset,
+        "map_variant": args.map_variant,
+        "resolved_map_preset": map_variant_metadata.get("preset", QIYUAN_DEFAULT),
+        "resolved_map_variant": map_variant_metadata.get("variant"),
+        "map_variant_name": map_variant_metadata.get("name"),
+        "map_base_position": map_variant_metadata.get("base_pos"),
+        "map_resource_position": map_variant_metadata.get("resource_pos"),
+        "map_obstacle_count": map_variant_metadata.get("obstacle_count"),
         "target_resources": args.target_resources,
         "experimenter_instruction": args.instruction,
         "agent_backend": args.agent_backend,

@@ -195,6 +195,9 @@ class QiyuanViewerTest(unittest.TestCase):
             "qiyuan_path": "/tmp/qiyuan",
             "difficulty": 2,
             "seed": 7,
+            "map_preset": "auto",
+            "resolved_map_preset": "difficulty2-five",
+            "resolved_map_variant": 2,
             "target_resources": 1,
             "experimenter_instruction": "collect one resource",
             "agent_backend": "mock-llm",
@@ -219,6 +222,10 @@ class QiyuanViewerTest(unittest.TestCase):
         self.assertIn("--pause-language-at", command)
         self.assertIn("2=earlier prompt", command)
         self.assertIn("4=What did you hear?", command)
+        self.assertIn("--map-preset", command)
+        self.assertEqual(command[command.index("--map-preset") + 1], "difficulty2-five")
+        self.assertIn("--map-variant", command)
+        self.assertEqual(command[command.index("--map-variant") + 1], "2")
         self.assertIn("--workspace-adjustment-policy", command)
         self.assertIn("anti_echo", command)
         self.assertIn("--allow-non-workspace-motor", command)
