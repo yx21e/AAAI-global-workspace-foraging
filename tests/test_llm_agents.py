@@ -260,6 +260,106 @@ class LLMAgentTest(unittest.TestCase):
         self.assertIn("Recent language history", proposal.content["summary"])
         self.assertEqual(len(module.input_history), 2)
 
+    def test_language_pause_prompt_broadcasts_structured_navigation_instruction(self):
+        module = LLMLanguageModule(client=MockLLMClient())
+        module_input = ModuleInput(
+            module_name="language",
+            env_t=31,
+            cycle_t=31,
+            private_observation={
+                "interaction_mode": "user_pause",
+                "pause_requested": True,
+                "user_prompt": "we need to move to (2,2), this is the top priority for next 5 moves.",
+                "report_query": None,
+            },
+            task_goal="collect one resource",
+        )
+
+        proposal = module.propose(module_input)
+
+        self.assertIsNone(proposal.action_hint)
+        self.assertEqual(proposal.content["instruction_type"], "temporary_navigation_goal")
+        self.assertEqual(proposal.content["instruction_target_position"], [2, 2])
+        self.assertEqual(proposal.content["instruction_horizon_steps"], 5)
+        self.assertEqual(proposal.content["instruction_priority"], "top")
+        self.assertIn("Parsed temporary navigation instruction", proposal.content["summary"])
+
+    def test_motor_uses_language_navigation_instruction_after_broadcast(self):
+        module = LLMMotorModule(client=MockLLMClient())
+        global_map = [["FLOOR" for _ in range(5)] for _ in range(5)]
+        module.propose(
+            ModuleInput(
+                module_name="motor",
+                env_t=30,
+                cycle_t=30,
+                private_observation={
+                    "agent_position": (4, 2),
+                    "carrying_resource": False,
+                    "nearby_obstacles": [],
+                    "blocked_directions": {
+                        "UP": False,
+                        "DOWN": False,
+                        "LEFT": False,
+                        "RIGHT": False,
+                    },
+                },
+                global_broadcast=WorkspaceBroadcast(
+                    timestamp=29,
+                    winner_module="perception",
+                    content={
+                        "summary": "Spatial target refresh.",
+                        "global_map": global_map,
+                        "resource_position": [0, 2],
+                        "base_position": [4, 4],
+                    },
+                    importance_score=0.7,
+                ),
+                available_actions=["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"],
+                task_goal="collect one resource and return to base",
+            )
+        )
+
+        proposal = module.propose(
+            ModuleInput(
+                module_name="motor",
+                env_t=31,
+                cycle_t=32,
+                private_observation={
+                    "agent_position": (4, 2),
+                    "carrying_resource": False,
+                    "nearby_obstacles": [],
+                    "blocked_directions": {
+                        "UP": False,
+                        "DOWN": False,
+                        "LEFT": False,
+                        "RIGHT": False,
+                    },
+                },
+                global_broadcast=WorkspaceBroadcast(
+                    timestamp=31,
+                    winner_module="language",
+                    content={
+                        "summary": "User pause prompt: move to (2,2).",
+                        "instruction_id": "instr-test",
+                        "instruction_type": "temporary_navigation_goal",
+                        "instruction_target_position": [2, 2],
+                        "instruction_direction": None,
+                        "instruction_horizon_steps": 5,
+                        "instruction_priority": "top",
+                        "instruction_source": "experimenter_language_prompt",
+                    },
+                    importance_score=0.8,
+                ),
+                available_actions=["UP", "DOWN", "LEFT", "RIGHT", "PICKUP"],
+                task_goal="collect one resource and return to base",
+            )
+        )
+
+        self.assertEqual(proposal.action_hint, "LEFT")
+        self.assertIn("target_source=language_instruction", proposal.content["observations"])
+        self.assertIn("planning_source=cached_workspace_global_map", proposal.content["observations"])
+        self.assertIn("Active language instruction", proposal.reflection)
+
 
 class ForagingScreenshotAttachTest(unittest.TestCase):
     def test_adapter_attaches_rendered_screenshot_to_state(self):

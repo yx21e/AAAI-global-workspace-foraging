@@ -3,7 +3,14 @@ from __future__ import annotations
 from typing import Optional
 
 from gwt_agent.core.types import ModuleInput, ModuleProposal, to_jsonable
-from gwt_agent.llm.client import LLMClient, MockLLMClient, summarize_broadcast
+from gwt_agent.llm.client import (
+    LLMClient,
+    MockLLMClient,
+    extract_global_map_from_broadcast,
+    extract_navigation_instruction_from_broadcast,
+    normalize_navigation_instruction,
+    summarize_broadcast,
+)
 from gwt_agent.modules.base import BaseModule
 
 
@@ -84,6 +91,11 @@ class LLMModule(BaseModule):
                     "Only motor may use UP, DOWN, LEFT, RIGHT, PICKUP, or NOOP. "
                     "Perception and language must return null."
                 ),
+                "instruction_fields": (
+                    "Only language should fill instruction_* fields, and only for explicit "
+                    "experimenter navigation prompts. Perception and motor should return null "
+                    "for these fields."
+                ),
             },
         }
 
@@ -97,10 +109,23 @@ class LLMModule(BaseModule):
         observations = response.get("observations")
         if not isinstance(observations, list):
             observations = []
-        return {
+        content = {
             "summary": str(response.get("summary") or ""),
             "observations": [str(item) for item in observations],
         }
+        for key in (
+            "instruction_id",
+            "instruction_type",
+            "instruction_target_position",
+            "instruction_direction",
+            "instruction_horizon_steps",
+            "instruction_priority",
+            "instruction_source",
+        ):
+            value = response.get(key)
+            if value is not None:
+                content[key] = to_jsonable(value)
+        return content
 
     def _action_hint(self, response: dict, module_input: ModuleInput) -> Optional[str]:
         if not self.allow_action_hint:
@@ -185,6 +210,8 @@ class LLMMotorModule(LLMModule):
     ) -> None:
         self.recent_positions = []
         self.last_goal = None
+        self.last_global_map = None
+        self.active_instruction = None
         super().__init__(
             name="motor",
             client=client,
@@ -196,7 +223,8 @@ class LLMMotorModule(LLMModule):
                 "Your private channel is limited to nearby obstacle/blocked-direction "
                 "information, current agent position, carry state, and action feedback. "
                 "Target locations or desired directions must come from the previous workspace "
-                "broadcast, not from private input. Propose one immediate simulator action "
+                "broadcast or from an active instruction previously broadcast by language, "
+                "not from private input. Propose one immediate simulator action "
                 "from UP, DOWN, LEFT, RIGHT, PICKUP, or NOOP. Never move into a blocked "
                 "direction. Use PICKUP only when the broadcast target is the resource and "
                 "the current agent position is at that target. If no target/action cue is "
@@ -209,6 +237,24 @@ class LLMMotorModule(LLMModule):
         )
 
     def _payload(self, module_input: ModuleInput) -> dict:
+        broadcast = to_jsonable(module_input.global_broadcast)
+        global_map = extract_global_map_from_broadcast(broadcast)
+        if global_map:
+            self.last_global_map = global_map
+        broadcast_instruction = extract_navigation_instruction_from_broadcast(broadcast)
+        if (
+            broadcast_instruction
+            and isinstance(broadcast, dict)
+            and str(broadcast.get("winner_module", "")).lower().startswith("language")
+        ):
+            current_id = (
+                self.active_instruction.get("instruction_id")
+                if isinstance(self.active_instruction, dict)
+                else None
+            )
+            if broadcast_instruction.get("instruction_id") != current_id:
+                self.active_instruction = broadcast_instruction
+
         payload = super()._payload(module_input)
         state = module_input.private_observation or {}
         carrying = bool(state.get("carrying_resource", False)) if isinstance(state, dict) else False
@@ -219,6 +265,8 @@ class LLMMotorModule(LLMModule):
         payload["module_private_state"] = {
             "recent_positions": list(self.recent_positions),
             "last_goal": self.last_goal,
+            "last_global_map": self.last_global_map,
+            "active_instruction": self.active_instruction,
         }
         return payload
 
@@ -235,6 +283,29 @@ class LLMMotorModule(LLMModule):
             return
         self.recent_positions.append(tuple(position))
         self.recent_positions = self.recent_positions[-8:]
+        self._update_active_instruction_after_proposal(position, proposal)
+
+    def _update_active_instruction_after_proposal(
+        self,
+        position,
+        proposal: ModuleProposal,
+    ) -> None:
+        instruction = normalize_navigation_instruction(self.active_instruction)
+        if not instruction:
+            self.active_instruction = None
+            return
+        target = instruction.get("instruction_target_position")
+        if target is not None and tuple(position) == tuple(target):
+            self.active_instruction = None
+            return
+        action = (proposal.action_hint or "").upper()
+        if action in {"UP", "DOWN", "LEFT", "RIGHT"}:
+            remaining = int(instruction.get("instruction_horizon_steps") or 1) - 1
+            if remaining <= 0:
+                self.active_instruction = None
+            else:
+                instruction["instruction_horizon_steps"] = remaining
+                self.active_instruction = instruction
 
 
 class LLMLanguageModule(LLMModule):
@@ -258,7 +329,11 @@ class LLMLanguageModule(LLMModule):
                 "By default, you listen to the previous workspace broadcast and your own "
                 "recent input history. When pause_requested is true, the experimenter has "
                 "paused the run and is speaking directly to you through user_prompt; answer "
-                "that prompt using the previous broadcast and history. When report_query is "
+                "that prompt using the previous broadcast and history. If the prompt contains "
+                "an explicit temporary navigation instruction such as move to (x,y) or move "
+                "up/down/left/right for N steps, include the matching instruction_* fields; "
+                "this is a top-down workspace instruction, not a direct simulator action. "
+                "When report_query is "
                 "present, answer outward to the experimenter. Do not send actions to the 2D "
                 "simulator. Return only JSON matching the schema."
             ),
@@ -320,6 +395,39 @@ def proposal_response_schema() -> dict:
             },
             "rationale": {"type": "string"},
             "reflection": {"type": "string"},
+            "instruction_id": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "instruction_type": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "enum": ["temporary_navigation_goal", "temporary_direction"],
+                    },
+                    {"type": "null"},
+                ]
+            },
+            "instruction_target_position": {
+                "anyOf": [
+                    {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                    },
+                    {"type": "null"},
+                ]
+            },
+            "instruction_direction": {
+                "anyOf": [
+                    {
+                        "type": "string",
+                        "enum": ["UP", "DOWN", "LEFT", "RIGHT"],
+                    },
+                    {"type": "null"},
+                ]
+            },
+            "instruction_horizon_steps": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            "instruction_priority": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "instruction_source": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         },
         "required": [
             "summary",
@@ -328,6 +436,13 @@ def proposal_response_schema() -> dict:
             "action_hint",
             "rationale",
             "reflection",
+            "instruction_id",
+            "instruction_type",
+            "instruction_target_position",
+            "instruction_direction",
+            "instruction_horizon_steps",
+            "instruction_priority",
+            "instruction_source",
         ],
     }
 

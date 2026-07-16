@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib.util
 import json
 import mimetypes
@@ -150,42 +151,79 @@ class MockLLMClient:
         agent_pos = tuple_or_none(state.get("agent_position")) or (0, 0)
         carrying = bool(state.get("carrying_resource", False))
         broadcast_positions = extract_positions_from_broadcast(user_payload.get("last_broadcast"))
-        target_key = "base_position" if carrying else "resource_position"
-        target = tuple_or_none(broadcast_positions.get(target_key))
         blocked = state.get("blocked_directions") or {}
         nearby = {tuple(item) for item in state.get("nearby_obstacles") or []}
         private_state = user_payload.get("module_private_state") or {}
+        instruction = normalize_navigation_instruction(
+            private_state.get("active_instruction")
+        ) or extract_navigation_instruction_from_broadcast(user_payload.get("last_broadcast"))
         recent_positions = {
             tuple(item)
             for item in private_state.get("recent_positions", [])
         }
+        cached_global_map = private_state.get("last_global_map")
+
+        target_key = "base_position" if carrying else "resource_position"
+        instruction_target = tuple_or_none(instruction.get("instruction_target_position")) if instruction else None
+        instruction_direction = str(instruction.get("instruction_direction") or "").upper() if instruction else ""
+        if instruction_target is not None or instruction_direction:
+            target = instruction_target
+            target_source = "language_instruction"
+            goal = "follow_language_instruction"
+        else:
+            target = tuple_or_none(broadcast_positions.get(target_key))
+            target_source = "workspace_broadcast" if target is not None else "unavailable"
+            goal = "return_to_base" if carrying else "collect_resource"
+
         planned = None
-        if target is not None:
+        planning_source = "none"
+        if instruction_direction in {"UP", "DOWN", "LEFT", "RIGHT"}:
+            if blocked.get(instruction_direction, False):
+                action = "NOOP"
+                planning_source = "language_direction_blocked"
+            else:
+                action = instruction_direction
+                planning_source = "language_direction"
+        elif target is not None:
             planned = choose_broadcast_map_action(
                 agent_pos=agent_pos,
                 target=target,
                 broadcast=user_payload.get("last_broadcast"),
                 blocked_directions=blocked,
             )
+            if planned is None and cached_global_map:
+                planned = choose_global_map_action(
+                    agent_pos=agent_pos,
+                    target=target,
+                    grid=cached_global_map,
+                    blocked_directions=blocked,
+                )
+                if planned is not None:
+                    planning_source = "cached_workspace_global_map"
+            elif planned is not None:
+                planning_source = "broadcast_global_map"
+
+            if instruction_target is not None and agent_pos == instruction_target:
+                action = "NOOP"
+                planning_source = "language_instruction_target_reached"
+            elif not carrying and target_source == "workspace_broadcast" and agent_pos == target:
+                action = "PICKUP"
+            elif planned is not None:
+                action = planned
+            else:
+                action = choose_greedy_safe_action(
+                    agent_pos,
+                    target,
+                    nearby,
+                    blocked,
+                    recent_positions,
+                )
+                planning_source = "local_greedy"
+        else:
+            action = "NOOP"
 
         target_text = str(target) if target is not None else "no broadcast target"
-        if target is None:
-            action = "NOOP"
-        elif not carrying and agent_pos == target:
-            action = "PICKUP"
-        elif planned is not None:
-            action = planned
-        else:
-            action = choose_greedy_safe_action(
-                agent_pos,
-                target,
-                nearby,
-                blocked,
-                recent_positions,
-            )
-
-        goal = "return_to_base" if carrying else "collect_resource"
-        if target is None:
+        if target is None and planning_source not in {"language_direction", "language_direction_blocked"}:
             return {
                 "summary": "Idle.",
                 "observations": [],
@@ -201,20 +239,22 @@ class MockLLMClient:
                 ),
             }
         is_blocked = bool(blocked.get(action))
+        planning_source_text = planning_source.replace("_", " ")
         return {
             "summary": (
                 f"Motor proposes {action}; goal={goal}; target={target_text}; "
-                "cue_source=workspace_broadcast."
+                f"cue_source={target_source}."
             ),
             "observations": [
                 f"agent_position={agent_pos}",
                 f"resource_position={broadcast_positions.get('resource_position')}",
                 f"base_position={broadcast_positions.get('base_position')}",
                 f"target_position={target}",
-                "target_source=workspace_broadcast" if target is not None else "target_source=unavailable",
-                "planning_source=broadcast_global_map" if planned is not None else "planning_source=local_greedy",
+                f"target_source={target_source}",
+                f"planning_source={planning_source}",
                 f"heard_broadcast={broadcast_summary}",
                 f"blocked_directions={blocked}",
+                f"active_instruction={instruction}" if instruction else "active_instruction=None",
             ],
             "confidence": 0.76 if action != "NOOP" else 0.45,
             "action_hint": action,
@@ -223,9 +263,10 @@ class MockLLMClient:
                 "and target information available from the workspace broadcast."
             ),
             "reflection": (
-                f"I am at {agent_pos}, pursuing {goal}, and using the broadcast target {target_text}. "
-                f"Planning source is {'broadcast global map' if planned is not None else 'local greedy fallback'}. "
+                f"I am at {agent_pos}, pursuing {goal}, and using {target_source} target {target_text}. "
+                f"Planning source is {planning_source_text}. "
                 f"Local blocked directions are {blocked}; proposed action {action} has blocked={is_blocked}. "
+                f"Active language instruction is {instruction if instruction else 'none'}. "
                 "If this action still fails in the environment, the mismatch should be inspected in the "
                 "motor blocked-direction input or simulator transition."
             ),
@@ -252,21 +293,39 @@ class MockLLMClient:
             "The language center is monitoring the latest broadcast for possible reporting.",
         ]
         if pause_requested and user_prompt:
+            instruction = parse_navigation_instruction(user_prompt)
             summary = (
                 f"User pause prompt: {user_prompt}. I heard the active workspace broadcast as "
                 f"{broadcast_summary}. Recent language history: {history_summary}."
             )
+            if instruction:
+                target = instruction.get("instruction_target_position")
+                direction = instruction.get("instruction_direction")
+                horizon = instruction.get("instruction_horizon_steps")
+                if target:
+                    summary += (
+                        f" Parsed temporary navigation instruction: move toward {target} "
+                        f"for up to {horizon} motor steps."
+                    )
+                elif direction:
+                    summary += (
+                        f" Parsed temporary navigation instruction: move {direction} "
+                        f"for up to {horizon} motor steps."
+                    )
             confidence = 0.88
         elif query:
+            instruction = {}
             summary = (
                 f"Experimenter query: {query}. Active workspace broadcast is "
                 f"{broadcast_summary}. Task goal is {user_payload.get('task_goal')}."
             )
             confidence = 0.82
         elif winner == "language":
+            instruction = {}
             summary = "Idle."
             confidence = 0.25
         else:
+            instruction = {}
             summary = idle_corpus[cycle_t % len(idle_corpus)]
             confidence = 0.45
         observations = [] if summary == "Idle." else [
@@ -274,17 +333,27 @@ class MockLLMClient:
             f"broadcast_summary={broadcast_summary}",
             f"history_summary={history_summary}",
         ]
-        return {
+        if instruction:
+            observations.extend(instruction_observations(instruction))
+        response = {
             "summary": summary,
             "observations": observations,
             "confidence": confidence,
             "action_hint": None,
-            "rationale": "Language reports to the experimenter, not to the 2D simulator.",
+            "rationale": (
+                "Language reports to the experimenter and can broadcast structured "
+                "top-down instructions only if it wins workspace; it still does not "
+                "send actions directly to the 2D simulator."
+            ),
             "reflection": (
                 f"I heard the latest broadcast as {broadcast_summary}. "
-                "My role is to keep an experimenter-facing verbal account and not to control movement."
+                "My role is to keep an experimenter-facing verbal account. "
+                "If the user prompt contains a temporary navigation instruction and I win workspace, "
+                "motor may use that broadcast on the next cycle; I do not directly control movement."
             ),
         }
+        response.update(instruction)
+        return response
 
 
 class OpenAIResponsesClient:
@@ -705,6 +774,126 @@ def extract_positions_from_broadcast(value) -> JsonDict:
     return positions
 
 
+def parse_navigation_instruction(text: str) -> JsonDict:
+    """Parse explicit experimenter navigation commands into broadcastable fields."""
+    if not text:
+        return {}
+    source = str(text)
+    lower = source.lower()
+    horizon = parse_instruction_horizon(lower)
+    priority = "top" if any(
+        phrase in lower
+        for phrase in ("top priority", "highest priority", "urgent", "must", "need to")
+    ) else "normal"
+
+    target_match = re.search(r"\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)", source)
+    if target_match:
+        target = [int(target_match.group(1)), int(target_match.group(2))]
+        return {
+            "instruction_id": stable_instruction_id(source),
+            "instruction_type": "temporary_navigation_goal",
+            "instruction_target_position": target,
+            "instruction_direction": None,
+            "instruction_horizon_steps": horizon,
+            "instruction_priority": priority,
+            "instruction_source": "experimenter_language_prompt",
+        }
+
+    direction_match = re.search(
+        r"\b(?:move|go|walk|step|head)\s+(up|down|left|right)\b",
+        lower,
+    )
+    if direction_match:
+        return {
+            "instruction_id": stable_instruction_id(source),
+            "instruction_type": "temporary_direction",
+            "instruction_target_position": None,
+            "instruction_direction": direction_match.group(1).upper(),
+            "instruction_horizon_steps": horizon,
+            "instruction_priority": priority,
+            "instruction_source": "experimenter_language_prompt",
+        }
+    return {}
+
+
+def parse_instruction_horizon(lower_text: str) -> int:
+    patterns = [
+        r"(?:next|for)\s+(\d+)\s+(?:move|moves|step|steps|cycle|cycles)",
+        r"(\d+)\s+(?:move|moves|step|steps|cycle|cycles)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, lower_text)
+        if match:
+            return max(1, min(20, int(match.group(1))))
+    return 1
+
+
+def stable_instruction_id(text: str) -> str:
+    digest = hashlib.sha1(str(text).encode("utf-8")).hexdigest()
+    return f"instr-{digest[:10]}"
+
+
+def instruction_observations(instruction: JsonDict) -> list[str]:
+    return [
+        f"instruction_id={instruction.get('instruction_id')}",
+        f"instruction_type={instruction.get('instruction_type')}",
+        f"instruction_target_position={instruction.get('instruction_target_position')}",
+        f"instruction_direction={instruction.get('instruction_direction')}",
+        f"instruction_horizon_steps={instruction.get('instruction_horizon_steps')}",
+        f"instruction_priority={instruction.get('instruction_priority')}",
+        f"instruction_source={instruction.get('instruction_source')}",
+    ]
+
+
+def extract_navigation_instruction_from_broadcast(value) -> JsonDict:
+    if not isinstance(value, dict):
+        return {}
+    content = value.get("content")
+    if not isinstance(content, dict):
+        return {}
+    return normalize_navigation_instruction(content)
+
+
+def normalize_navigation_instruction(value) -> JsonDict:
+    if not isinstance(value, dict):
+        return {}
+    instruction_type = value.get("instruction_type")
+    target = parse_position_value(value.get("instruction_target_position"))
+    direction = value.get("instruction_direction")
+    direction_text = str(direction or "").upper()
+    if direction_text not in {"UP", "DOWN", "LEFT", "RIGHT"}:
+        direction_text = None
+    if instruction_type not in {"temporary_navigation_goal", "temporary_direction"}:
+        if target is not None:
+            instruction_type = "temporary_navigation_goal"
+        elif direction_text:
+            instruction_type = "temporary_direction"
+        else:
+            return {}
+    try:
+        horizon = int(value.get("instruction_horizon_steps") or 1)
+    except (TypeError, ValueError):
+        horizon = 1
+    if horizon <= 0:
+        return {}
+    return {
+        "instruction_id": value.get("instruction_id") or stable_instruction_id(stable_text_for_instruction(value)),
+        "instruction_type": instruction_type,
+        "instruction_target_position": list(target) if target is not None else None,
+        "instruction_direction": direction_text,
+        "instruction_horizon_steps": max(1, min(20, horizon)),
+        "instruction_priority": value.get("instruction_priority") or "normal",
+        "instruction_source": value.get("instruction_source") or "workspace_broadcast",
+    }
+
+
+def stable_text_for_instruction(value) -> str:
+    try:
+        return json.dumps(value, sort_keys=True, ensure_ascii=True)
+    except TypeError:
+        return repr(value)
+
+
 def parse_position_value(value):
     if value is None:
         return None
@@ -767,6 +956,21 @@ def choose_broadcast_map_action(
     blocked_directions: JsonDict,
 ) -> Optional[str]:
     grid = extract_global_map_from_broadcast(broadcast)
+    return choose_global_map_action(
+        agent_pos=agent_pos,
+        target=target,
+        grid=grid,
+        blocked_directions=blocked_directions,
+    )
+
+
+def choose_global_map_action(
+    *,
+    agent_pos: tuple,
+    target: tuple,
+    grid,
+    blocked_directions: JsonDict,
+) -> Optional[str]:
     if not grid:
         return None
     path = shortest_path_on_global_map(grid=grid, start=agent_pos, target=target)

@@ -52,7 +52,10 @@ Important implementation boundaries:
 - A maintained workspace broadcast can be heard by modules as context, but its
   old `action_hint` is not resent to Qiyuan as a new simulator action.
 - The language module is the experimenter-facing spokesperson. It never sends
-  actions to Qiyuan.
+  actions to Qiyuan. If an experimenter pause prompt contains an explicit
+  temporary navigation instruction, language may broadcast structured
+  `instruction_*` fields only by winning workspace; motor can then use that
+  broadcast as a top-down cue on later cycles.
 - The non-workspace motor route is off by default. When enabled, it represents
   an automatic/local action route and is logged separately from workspace actions.
 - The viewer's reasoning display is a concise decision-basis audit plus
@@ -94,10 +97,11 @@ pipeline revision:
 - perception, motor, and language all enter workspace competition after scoring;
   there is no idle-language or motor-`NOOP` eligibility filter
 
-This means motor cannot preserve a target by winning and rebroadcasting its own
-target-bearing content. If motor wins, the broadcast sent back to modules
-removes `resource_position`, `base_position`, and `target_position`. On the next
-cycle, motor must either hear a fresh perception target broadcast or return
+This means motor cannot preserve a resource/base target by winning and
+rebroadcasting its own target-bearing content. If motor wins, the broadcast sent
+back to modules removes `resource_position`, `base_position`, and
+`target_position`. On the next cycle, motor must either hear a fresh perception
+target broadcast, hear an explicit language `instruction_*` broadcast, or return
 `NOOP`.
 
 ## Repository Layout
@@ -171,7 +175,7 @@ PYTHONPATH=src:. python3 -m unittest discover -s tests -v
 Expected current result:
 
 ```text
-31 tests OK
+42 tests OK
 ```
 
 ## Run the Integrated Qiyuan Demo
@@ -307,6 +311,12 @@ is no longer just a retrospective recording once the server is active. This does
 not add a special score bonus to language. The prompt enters only through the
 language module's private input, and the same deterministic salience/relevance
 importance function decides whether the language reply wins workspace.
+
+If the prompt says something like `move to (2,2) for next 5 moves` or `move up
+for 5 steps`, language converts it into structured `instruction_*` fields. Those
+fields affect movement only if the language proposal wins workspace and is
+broadcast. Motor hears that broadcast on the following cycle and may use the
+temporary top-down instruction while still respecting blocked-direction input.
 
 When a map is loaded from the Map panel, the server creates a clean new episode
 for that map variant and updates the current browser page with the new run
