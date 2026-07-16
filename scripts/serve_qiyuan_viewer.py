@@ -20,6 +20,7 @@ from gwt_agent.ui.qiyuan_viewer import build_viewer, build_viewer_payload
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RUN_DIR = PROJECT_ROOT / "runs" / "qiyuan_integrated"
+RUN_ID_BASE_LIMIT = 28
 
 
 @dataclass
@@ -76,16 +77,50 @@ def safe_run_id(value: str) -> str:
 
 def make_prompt_run_id(source_run_id: str, cycle: int) -> str:
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    return safe_run_id(f"{source_run_id}-prompt-c{cycle}-{stamp}")
+    return safe_run_id(f"{base_run_id(source_run_id)}-p{cycle}-{stamp}")
 
 
 def make_map_run_id(source_run_id: str, map_preset: str, map_variant: Optional[Any]) -> str:
     stamp = time.strftime("%Y%m%d-%H%M%S")
+    return safe_run_id(f"{base_run_id(source_run_id)}-{map_label(map_preset, map_variant)}-{stamp}")
+
+
+def make_prompt_run_id_for_summary(
+    source_run_id: str,
+    cycle: int,
+    summary: Dict[str, Any],
+) -> str:
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    return safe_run_id(
+        f"{base_run_id(source_run_id)}-{summary_map_label(summary)}-p{cycle}-{stamp}"
+    )
+
+
+def base_run_id(value: str) -> str:
+    cleaned = safe_run_id(value)
+    marker_positions = []
+    for pattern in (r"-map-", r"-prompt-c\d+", r"-p\d+-"):
+        match = re.search(pattern, cleaned)
+        if match:
+            marker_positions.append(match.start())
+    if marker_positions:
+        cleaned = cleaned[: min(marker_positions)]
+    cleaned = cleaned[:RUN_ID_BASE_LIMIT].strip(".-")
+    return cleaned or "run"
+
+
+def map_label(map_preset: str, map_variant: Optional[Any]) -> str:
     if map_preset == "qiyuan-default":
-        map_label = "qiyuan-default"
-    else:
-        map_label = f"{map_preset}-v{map_variant}"
-    return safe_run_id(f"{source_run_id}-map-{map_label}-{stamp}")
+        return "qdef"
+    if map_preset == "difficulty2-five":
+        return f"d2v{map_variant}"
+    return safe_run_id(str(map_preset))[:12] or "map"
+
+
+def summary_map_label(summary: Dict[str, Any]) -> str:
+    preset = rerun_map_preset(summary) or "qiyuan-default"
+    variant = rerun_map_variant(summary)
+    return map_label(preset, variant)
 
 
 def add_arg(command: list[str], flag: str, value: Any) -> None:
@@ -250,7 +285,7 @@ def run_prompt_rerun(
     prompt: str,
 ) -> Dict[str, Any]:
     summary = load_summary(config.run_dir, source_run_id)
-    new_run_id = make_prompt_run_id(source_run_id, cycle)
+    new_run_id = make_prompt_run_id_for_summary(source_run_id, cycle, summary)
     command = build_rerun_command(
         config=config,
         summary=summary,

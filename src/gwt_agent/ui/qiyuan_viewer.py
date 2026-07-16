@@ -1103,6 +1103,30 @@ HTML_TEMPLATE = r"""<!doctype html>
       args.push(flag, shellQuote(value));
     }
 
+    function safeRunId(value) {
+      return text(value)
+        .replace(/[^A-Za-z0-9_.-]+/g, '-')
+        .replace(/^[.-]+|[.-]+$/g, '') || 'run';
+    }
+
+    function baseRunId(value) {
+      let cleaned = safeRunId(value);
+      const markers = [
+        cleaned.indexOf('-map-'),
+        cleaned.search(/-prompt-c\d+/),
+        cleaned.search(/-p\d+-/),
+      ].filter(index => index >= 0);
+      if (markers.length) cleaned = cleaned.slice(0, Math.min(...markers));
+      cleaned = cleaned.slice(0, 28).replace(/[.-]+$/g, '');
+      return cleaned || 'run';
+    }
+
+    function mapRunLabel(preset, variant) {
+      if (preset === 'qiyuan-default') return 'qdef';
+      if (preset === 'difficulty2-five') return `d2v${variant}`;
+      return safeRunId(preset).slice(0, 12) || 'map';
+    }
+
     function buildRerunCommand() {
       const summary = data.summary || {};
       const cycle = Number(promptCycle.value || 0);
@@ -1122,7 +1146,11 @@ HTML_TEMPLATE = r"""<!doctype html>
       }
       argPair(args, '--target-resources', summary.target_resources);
       argPair(args, '--max-cycles', summary.max_cycles || Math.max(summary.cycle_count || 0, 1));
-      argPair(args, '--run-id', `${summary.run_id || 'run'}-prompt-c${cycle}`);
+      argPair(
+        args,
+        '--run-id',
+        `${baseRunId(summary.run_id)}-${mapRunLabel(selectedMapPreset, mapVariant)}-p${cycle}-manual`
+      );
       argPair(args, '--out-dir', summary.out_dir);
       argPair(args, '--instruction', summary.experimenter_instruction);
       argPair(args, '--agent-backend', summary.agent_backend || summary.resolved_agent_backend || 'mock-llm');

@@ -7,8 +7,11 @@ from pathlib import Path
 
 from scripts.serve_qiyuan_viewer import (
     ServerConfig,
+    base_run_id,
     build_map_command,
     build_rerun_command,
+    make_map_run_id,
+    make_prompt_run_id_for_summary,
     parse_map_request,
 )
 from gwt_agent.ui.qiyuan_viewer import (
@@ -311,6 +314,29 @@ class QiyuanViewerTest(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             parse_map_request({"map_preset": "difficulty2-five", "map_variant": "9"})
+
+    def test_generated_run_ids_do_not_accumulate_rerun_history(self):
+        long_source = (
+            "qiyuan-d2-seed7-map-qiyuan-default-20260716-084715-"
+            "map-difficulty2-five-v0-20260716-084723-"
+            "map-difficulty2-five-v1-20260716-084728-"
+            "prompt-c175-20260716-085231"
+        )
+        summary = {
+            "resolved_map_preset": "difficulty2-five",
+            "resolved_map_variant": 1,
+        }
+
+        prompt_id = make_prompt_run_id_for_summary(long_source, 175, summary)
+        map_id = make_map_run_id(long_source, "difficulty2-five", "4")
+
+        self.assertEqual(base_run_id(long_source), "qiyuan-d2-seed7")
+        self.assertLessEqual(len(prompt_id), 60)
+        self.assertLessEqual(len(map_id), 60)
+        self.assertTrue(prompt_id.startswith("qiyuan-d2-seed7-d2v1-p175-"))
+        self.assertTrue(map_id.startswith("qiyuan-d2-seed7-d2v4-"))
+        self.assertNotIn("084715-map", prompt_id)
+        self.assertNotIn("prompt-c175", prompt_id)
 
 
 if __name__ == "__main__":
