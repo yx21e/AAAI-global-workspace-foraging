@@ -617,9 +617,14 @@ HTML_TEMPLATE = r"""<!doctype html>
       font: inherit;
       font-size: 13px;
     }
-    input[type="number"] {
+    input[type="number"],
+    select {
       height: 34px;
       padding: 6px 8px;
+    }
+    select {
+      color: var(--ink);
+      background: #fff;
     }
     textarea {
       min-height: 82px;
@@ -813,6 +818,28 @@ HTML_TEMPLATE = r"""<!doctype html>
         <p class="report" id="reportPanel"></p>
       </div>
       <div class="section">
+        <h2>Map</h2>
+        <div class="prompt-grid">
+          <label for="mapPreset">Preset</label>
+          <select id="mapPreset">
+            <option value="difficulty2-five">difficulty2-five</option>
+            <option value="qiyuan-default">qiyuan-default</option>
+          </select>
+          <label for="mapVariant">Variant</label>
+          <select id="mapVariant">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+          </select>
+          <div class="prompt-actions">
+            <button id="loadMapBtn" class="wide" type="button" title="Run this map variant">Load</button>
+          </div>
+          <div class="status" id="mapStatus"></div>
+        </div>
+      </div>
+      <div class="section">
         <h2>Experimenter</h2>
         <div class="prompt-grid">
           <label for="promptCycle">Cycle</label>
@@ -850,6 +877,10 @@ HTML_TEMPLATE = r"""<!doctype html>
     const copyCommandBtn = document.getElementById('copyCommandBtn');
     const rerunCommand = document.getElementById('rerunCommand');
     const promptStatus = document.getElementById('promptStatus');
+    const mapPreset = document.getElementById('mapPreset');
+    const mapVariant = document.getElementById('mapVariant');
+    const loadMapBtn = document.getElementById('loadMapBtn');
+    const mapStatus = document.getElementById('mapStatus');
     const fullTextModal = document.getElementById('fullTextModal');
     const fullTextTitle = document.getElementById('fullTextTitle');
     const fullTextBody = document.getElementById('fullTextBody');
@@ -993,18 +1024,27 @@ HTML_TEMPLATE = r"""<!doctype html>
         : `${resolvedPreset} v${resolvedVariant}`;
       document.getElementById('mapPill').textContent = `map ${mapLabel}`;
       scrubber.max = Math.max(0, data.frames.length - 1);
+      renderMapControls();
     }
 
-    function replaceRunPayload(nextPayload, targetCycle) {
+    function replaceRunPayload(nextPayload, targetCycle, options) {
+      const opts = options || {};
       stop();
       data = nextPayload;
       renderSummary();
       const targetIndex = data.steps.findIndex(step => Number(step.cycle_t) === Number(targetCycle));
       const nextIndex = targetIndex >= 0 ? targetIndex : Math.min(index, data.frames.length - 1);
       setIndex(nextIndex);
-      experimenterPrompt.value = '';
+      if (opts.clearPrompt !== false) {
+        experimenterPrompt.value = '';
+      }
       refreshRerunCommand();
-      setPromptStatus(`Updated current viewer with ${data.summary.run_id}`, 'ok');
+      const message = opts.message || `Updated current viewer with ${data.summary.run_id}`;
+      if (opts.statusTarget === 'map') {
+        setMapStatus(message, 'ok');
+      } else {
+        setPromptStatus(message, 'ok');
+      }
     }
 
     function openFullText(id) {
@@ -1072,12 +1112,12 @@ HTML_TEMPLATE = r"""<!doctype html>
       argPair(args, '--qiyuan-path', summary.qiyuan_path);
       argPair(args, '--difficulty', summary.difficulty);
       argPair(args, '--seed', summary.seed);
-      const mapPreset = summary.resolved_map_preset || summary.map_preset || 'qiyuan-default';
-      argPair(args, '--map-preset', mapPreset);
+      const selectedMapPreset = summary.resolved_map_preset || summary.map_preset || 'qiyuan-default';
+      argPair(args, '--map-preset', selectedMapPreset);
       const mapVariant = summary.resolved_map_variant === null || summary.resolved_map_variant === undefined
         ? summary.map_variant
         : summary.resolved_map_variant;
-      if (mapPreset !== 'qiyuan-default') {
+      if (selectedMapPreset !== 'qiyuan-default') {
         argPair(args, '--map-variant', mapVariant);
       }
       argPair(args, '--target-resources', summary.target_resources);
@@ -1118,9 +1158,17 @@ HTML_TEMPLATE = r"""<!doctype html>
       rerunCommand.textContent = buildRerunCommand();
     }
 
+    function setStatus(element, message, kind) {
+      element.textContent = message || '';
+      element.className = `status ${kind || ''}`.trim();
+    }
+
     function setPromptStatus(message, kind) {
-      promptStatus.textContent = message || '';
-      promptStatus.className = `status ${kind || ''}`.trim();
+      setStatus(promptStatus, message, kind);
+    }
+
+    function setMapStatus(message, kind) {
+      setStatus(mapStatus, message, kind);
     }
 
     function setPromptBusy(isBusy) {
@@ -1128,8 +1176,47 @@ HTML_TEMPLATE = r"""<!doctype html>
       sendPromptBtn.textContent = isBusy ? 'Running...' : 'Run';
     }
 
+    function setMapBusy(isBusy) {
+      loadMapBtn.disabled = isBusy;
+      loadMapBtn.textContent = isBusy ? 'Loading...' : 'Load';
+    }
+
     function canUsePromptServer() {
       return window.location.protocol === 'http:' || window.location.protocol === 'https:';
+    }
+
+    function currentMapPreset() {
+      return data.summary.resolved_map_preset || data.summary.map_preset || 'qiyuan-default';
+    }
+
+    function currentMapVariant() {
+      const value = data.summary.resolved_map_variant === null || data.summary.resolved_map_variant === undefined
+        ? data.summary.map_variant
+        : data.summary.resolved_map_variant;
+      if (value === null || value === undefined || value === '' || value === 'auto') return '0';
+      return String(value);
+    }
+
+    function updateMapVariantEnabled() {
+      mapVariant.disabled = mapPreset.value === 'qiyuan-default';
+    }
+
+    function renderMapControls() {
+      const preset = currentMapPreset();
+      mapPreset.value = preset === 'difficulty2-five' ? 'difficulty2-five' : 'qiyuan-default';
+      mapVariant.value = currentMapVariant();
+      updateMapVariantEnabled();
+    }
+
+    async function readJsonResponse(response) {
+      const raw = await response.text();
+      try {
+        return JSON.parse(raw);
+      } catch (error) {
+        throw new Error(
+          'The API did not return JSON. Open this viewer through scripts/serve_qiyuan_viewer.py, not a static file or generic web server.'
+        );
+      }
     }
 
     async function submitPrompt() {
@@ -1156,15 +1243,7 @@ HTML_TEMPLATE = r"""<!doctype html>
             prompt,
           }),
         });
-        const raw = await response.text();
-        let result = {};
-        try {
-          result = JSON.parse(raw);
-        } catch (error) {
-          throw new Error(
-            'The rerun API did not return JSON. Open this viewer through scripts/serve_qiyuan_viewer.py, not a static file or generic web server.'
-          );
-        }
+        const result = await readJsonResponse(response);
         if (!response.ok || !result.ok) {
           throw new Error(result.error || `HTTP ${response.status}`);
         }
@@ -1178,6 +1257,47 @@ HTML_TEMPLATE = r"""<!doctype html>
       } catch (error) {
         setPromptStatus(String(error.message || error), 'error');
         setPromptBusy(false);
+      }
+    }
+
+    async function submitMap() {
+      updateMapVariantEnabled();
+      if (!canUsePromptServer()) {
+        setMapStatus('Static viewer: start scripts/serve_qiyuan_viewer.py and open the local http URL to load maps.', 'error');
+        return;
+      }
+      const selectedPreset = mapPreset.value;
+      const selectedVariant = mapVariant.value;
+      setMapBusy(true);
+      const mapLabel = selectedPreset === 'qiyuan-default'
+        ? 'qiyuan-default'
+        : `${selectedPreset} v${selectedVariant}`;
+      setMapStatus(`Loading ${mapLabel}...`, 'busy');
+      try {
+        const response = await fetch('/api/map', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            run_id: data.summary.run_id,
+            map_preset: selectedPreset,
+            map_variant: selectedVariant,
+          }),
+        });
+        const result = await readJsonResponse(response);
+        if (!response.ok || !result.ok) {
+          throw new Error(result.error || `HTTP ${response.status}`);
+        }
+        if (!result.payload) {
+          throw new Error('Map run completed without a viewer payload.');
+        }
+        replaceRunPayload(result.payload, 0, {
+          statusTarget: 'map',
+          message: `Loaded ${mapLabel}: ${result.run_id}`,
+        });
+      } catch (error) {
+        setMapStatus(String(error.message || error), 'error');
+      } finally {
+        setMapBusy(false);
       }
     }
 
@@ -1196,9 +1316,13 @@ HTML_TEMPLATE = r"""<!doctype html>
       if (!canUsePromptServer()) {
         sendPromptBtn.disabled = true;
         sendPromptBtn.textContent = 'Server required';
+        loadMapBtn.disabled = true;
+        loadMapBtn.textContent = 'Server required';
         setPromptStatus('Static viewer: start scripts/serve_qiyuan_viewer.py and open the local http URL to run prompts.', 'error');
+        setMapStatus('Static viewer: start scripts/serve_qiyuan_viewer.py and open the local http URL to load maps.', 'error');
       } else {
         setPromptStatus('Ready for experimenter prompt.', 'ok');
+        setMapStatus('Ready to load map.', 'ok');
       }
     }
 
@@ -1214,6 +1338,9 @@ HTML_TEMPLATE = r"""<!doctype html>
     experimenterPrompt.addEventListener('input', refreshRerunCommand);
     sendPromptBtn.addEventListener('click', submitPrompt);
     copyCommandBtn.addEventListener('click', copyCommand);
+    mapPreset.addEventListener('change', updateMapVariantEnabled);
+    mapVariant.addEventListener('change', updateMapVariantEnabled);
+    loadMapBtn.addEventListener('click', submitMap);
     closeFullTextBtn.addEventListener('click', closeFullText);
     fullTextModal.addEventListener('click', event => {
       if (event.target === fullTextModal) closeFullText();

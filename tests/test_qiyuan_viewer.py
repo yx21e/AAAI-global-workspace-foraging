@@ -5,7 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.serve_qiyuan_viewer import ServerConfig, build_rerun_command
+from scripts.serve_qiyuan_viewer import (
+    ServerConfig,
+    build_map_command,
+    build_rerun_command,
+    parse_map_request,
+)
 from gwt_agent.ui.qiyuan_viewer import (
     build_viewer_payload,
     build_viewer,
@@ -178,6 +183,9 @@ class QiyuanViewerTest(unittest.TestCase):
             self.assertIn("score basis", html)
             self.assertIn("Experimenter", html)
             self.assertIn("sendPromptBtn", html)
+            self.assertIn("Map", html)
+            self.assertIn("loadMapBtn", html)
+            self.assertIn("/api/map", html)
             self.assertIn("replaceRunPayload", html)
             self.assertIn("Server required", html)
             self.assertEqual(payload["summary"]["run_id"], run_id)
@@ -259,6 +267,50 @@ class QiyuanViewerTest(unittest.TestCase):
         self.assertIn("--map-preset", command)
         self.assertEqual(command[command.index("--map-preset") + 1], "qiyuan-default")
         self.assertNotIn("--map-variant", command)
+
+    def test_map_command_switches_map_without_language_pauses(self):
+        config = ServerConfig(
+            run_id="viewer-test",
+            run_dir=Path("/tmp/gwt-runs"),
+            python_executable="python3",
+            rerun_timeout=30,
+            max_cycles=12,
+        )
+        summary = {
+            "qiyuan_path": "/tmp/qiyuan",
+            "difficulty": 2,
+            "seed": 7,
+            "target_resources": 1,
+            "experimenter_instruction": "collect one resource",
+            "agent_backend": "mock-llm",
+            "language_pause_cycles": {"2": "earlier prompt"},
+        }
+
+        command = build_map_command(
+            config=config,
+            summary=summary,
+            new_run_id="viewer-test-map-v4",
+            map_preset="difficulty2-five",
+            map_variant="4",
+        )
+
+        self.assertIn("--map-preset", command)
+        self.assertEqual(command[command.index("--map-preset") + 1], "difficulty2-five")
+        self.assertIn("--map-variant", command)
+        self.assertEqual(command[command.index("--map-variant") + 1], "4")
+        self.assertNotIn("--pause-language-at", command)
+
+    def test_parse_map_request_validates_variant(self):
+        self.assertEqual(
+            parse_map_request({"map_preset": "difficulty2-five", "map_variant": "3"}),
+            ("difficulty2-five", "3"),
+        )
+        self.assertEqual(
+            parse_map_request({"map_preset": "qiyuan-default", "map_variant": "3"}),
+            ("qiyuan-default", None),
+        )
+        with self.assertRaises(ValueError):
+            parse_map_request({"map_preset": "difficulty2-five", "map_variant": "9"})
 
 
 if __name__ == "__main__":

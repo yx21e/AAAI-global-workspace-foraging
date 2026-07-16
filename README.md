@@ -275,8 +275,13 @@ The viewer supports:
 - reasoning panel with winner rationale/reflection, score basis, ignition basis, and action route
 - every module's score, action hint, summary, and observations
 - every module's concise rationale and reflection
+- map panel for loading Qiyuan's default map or one of the five difficulty-2
+  preset maps
 - experimenter prompt panel for pausing at the selected cycle and sending a
   language input to the language module
+
+Open the viewer through `scripts/serve_qiyuan_viewer.py` for clickable reruns.
+Opening the HTML file directly is static playback only.
 
 When an experimenter prompt is submitted, the server reruns the integrated demo
 with:
@@ -291,6 +296,10 @@ is no longer just a retrospective recording once the server is active. This does
 not add a special score bonus to language. The prompt enters only through the
 language module's private input, and the same deterministic salience/relevance
 importance function decides whether the language reply wins workspace.
+
+When a map is loaded from the Map panel, the server creates a clean new episode
+for that map variant and updates the current browser page with the new run
+payload. Map switching does not inherit previous experimenter language pauses.
 
 ## Reasoning and Reflection Display
 

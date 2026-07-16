@@ -79,6 +79,15 @@ def make_prompt_run_id(source_run_id: str, cycle: int) -> str:
     return safe_run_id(f"{source_run_id}-prompt-c{cycle}-{stamp}")
 
 
+def make_map_run_id(source_run_id: str, map_preset: str, map_variant: Optional[Any]) -> str:
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    if map_preset == "qiyuan-default":
+        map_label = "qiyuan-default"
+    else:
+        map_label = f"{map_preset}-v{map_variant}"
+    return safe_run_id(f"{source_run_id}-map-{map_label}-{stamp}")
+
+
 def add_arg(command: list[str], flag: str, value: Any) -> None:
     if value is None or value == "":
         return
@@ -101,13 +110,14 @@ def rerun_map_variant(summary: Dict[str, Any]) -> Optional[Any]:
     return summary.get("map_variant")
 
 
-def build_rerun_command(
+def build_run_command(
     *,
     config: ServerConfig,
     summary: Dict[str, Any],
     new_run_id: str,
-    cycle: int,
-    prompt: str,
+    map_preset: Optional[str] = None,
+    map_variant: Optional[Any] = None,
+    language_pauses: Optional[Dict[str, str]] = None,
 ) -> list[str]:
     max_cycles = config.max_cycles or summary.get("max_cycles") or max(summary.get("cycle_count", 1), 1)
     command = [
@@ -117,10 +127,11 @@ def build_rerun_command(
     add_arg(command, "--qiyuan-path", summary.get("qiyuan_path"))
     add_arg(command, "--difficulty", summary.get("difficulty", 1))
     add_arg(command, "--seed", summary.get("seed", 7))
-    map_preset = rerun_map_preset(summary)
-    add_arg(command, "--map-preset", map_preset)
-    if map_preset != "qiyuan-default":
-        add_arg(command, "--map-variant", rerun_map_variant(summary))
+    selected_preset = map_preset or rerun_map_preset(summary)
+    selected_variant = rerun_map_variant(summary) if map_variant is None else map_variant
+    add_arg(command, "--map-preset", selected_preset)
+    if selected_preset != "qiyuan-default":
+        add_arg(command, "--map-variant", selected_variant)
     add_arg(command, "--target-resources", summary.get("target_resources", 1))
     add_arg(command, "--max-cycles", max_cycles)
     add_arg(command, "--run-id", new_run_id)
@@ -144,34 +155,58 @@ def build_rerun_command(
     add_arg(command, "--report-query", summary.get("report_query"))
     for module, factor in sorted((summary.get("score_modifiers") or {}).items()):
         add_arg(command, "--score-modifier", f"{module}={factor}")
-    pauses = {
-        str(key): str(value)
-        for key, value in (summary.get("language_pause_cycles") or {}).items()
-    }
-    pauses[str(cycle)] = prompt
-    for pause_cycle in sorted(pauses, key=lambda value: int(value)):
-        add_arg(command, "--pause-language-at", f"{pause_cycle}={pauses[pause_cycle]}")
+    for pause_cycle in sorted(language_pauses or {}, key=lambda value: int(value)):
+        add_arg(command, "--pause-language-at", f"{pause_cycle}={language_pauses[pause_cycle]}")
     if summary.get("allow_non_workspace_motor_action"):
         command.append("--allow-non-workspace-motor")
     return command
 
 
-def run_prompt_rerun(
+def build_rerun_command(
     *,
     config: ServerConfig,
-    source_run_id: str,
+    summary: Dict[str, Any],
+    new_run_id: str,
     cycle: int,
     prompt: str,
-) -> Dict[str, Any]:
-    summary = load_summary(config.run_dir, source_run_id)
-    new_run_id = make_prompt_run_id(source_run_id, cycle)
-    command = build_rerun_command(
+) -> list[str]:
+    pauses = {
+        str(key): str(value)
+        for key, value in (summary.get("language_pause_cycles") or {}).items()
+    }
+    pauses[str(cycle)] = prompt
+    return build_run_command(
         config=config,
         summary=summary,
         new_run_id=new_run_id,
-        cycle=cycle,
-        prompt=prompt,
+        language_pauses=pauses,
     )
+
+
+def build_map_command(
+    *,
+    config: ServerConfig,
+    summary: Dict[str, Any],
+    new_run_id: str,
+    map_preset: str,
+    map_variant: Optional[Any],
+) -> list[str]:
+    return build_run_command(
+        config=config,
+        summary=summary,
+        new_run_id=new_run_id,
+        map_preset=map_preset,
+        map_variant=map_variant,
+        language_pauses={},
+    )
+
+
+def run_command_and_payload(
+    *,
+    config: ServerConfig,
+    command: list[str],
+    new_run_id: str,
+) -> Dict[str, Any]:
     env = os.environ.copy()
     existing_path = env.get("PYTHONPATH")
     env["PYTHONPATH"] = "src" if not existing_path else f"src{os.pathsep}{existing_path}"
@@ -207,6 +242,68 @@ def run_prompt_rerun(
     }
 
 
+def run_prompt_rerun(
+    *,
+    config: ServerConfig,
+    source_run_id: str,
+    cycle: int,
+    prompt: str,
+) -> Dict[str, Any]:
+    summary = load_summary(config.run_dir, source_run_id)
+    new_run_id = make_prompt_run_id(source_run_id, cycle)
+    command = build_rerun_command(
+        config=config,
+        summary=summary,
+        new_run_id=new_run_id,
+        cycle=cycle,
+        prompt=prompt,
+    )
+    return run_command_and_payload(
+        config=config,
+        command=command,
+        new_run_id=new_run_id,
+    )
+
+
+def run_map_rerun(
+    *,
+    config: ServerConfig,
+    source_run_id: str,
+    map_preset: str,
+    map_variant: Optional[Any],
+) -> Dict[str, Any]:
+    summary = load_summary(config.run_dir, source_run_id)
+    new_run_id = make_map_run_id(source_run_id, map_preset, map_variant)
+    command = build_map_command(
+        config=config,
+        summary=summary,
+        new_run_id=new_run_id,
+        map_preset=map_preset,
+        map_variant=map_variant,
+    )
+    return run_command_and_payload(
+        config=config,
+        command=command,
+        new_run_id=new_run_id,
+    )
+
+
+def parse_map_request(payload: Dict[str, Any]) -> tuple[str, Optional[str]]:
+    map_preset = str(payload.get("map_preset") or "difficulty2-five").strip()
+    if map_preset not in {"qiyuan-default", "difficulty2-five"}:
+        raise ValueError("map_preset must be qiyuan-default or difficulty2-five.")
+    if map_preset == "qiyuan-default":
+        return map_preset, None
+    raw_variant = str(payload.get("map_variant", "0")).strip()
+    try:
+        variant_id = int(raw_variant)
+    except ValueError as exc:
+        raise ValueError("map_variant must be an integer between 0 and 4.") from exc
+    if variant_id < 0 or variant_id > 4:
+        raise ValueError("map_variant must be between 0 and 4.")
+    return map_preset, str(variant_id)
+
+
 def make_handler(config: ServerConfig):
     class ExperimenterViewerHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -226,9 +323,19 @@ def make_handler(config: ServerConfig):
 
         def do_POST(self) -> None:
             path = urlparse(self.path).path
-            if path != "/api/rerun":
+            if path == "/api/rerun":
+                self.handle_prompt_rerun()
+                return
+            if path == "/api/map":
+                self.handle_map_rerun()
+                return
+            if path.startswith("/api/"):
                 self.write_json({"ok": False, "error": "Unknown API endpoint."}, status=404)
                 return
+
+            self.write_json({"ok": False, "error": "Unknown POST target."}, status=404)
+
+        def handle_prompt_rerun(self) -> None:
             try:
                 payload = self.read_json()
                 source_run_id = safe_run_id(str(payload.get("run_id") or config.run_id))
@@ -243,6 +350,21 @@ def make_handler(config: ServerConfig):
                     source_run_id=source_run_id,
                     cycle=cycle,
                     prompt=prompt,
+                )
+                self.write_json(result)
+            except Exception as exc:  # pragma: no cover - exercised by browser/demo use.
+                self.write_json({"ok": False, "error": str(exc)}, status=500)
+
+        def handle_map_rerun(self) -> None:
+            try:
+                payload = self.read_json()
+                source_run_id = safe_run_id(str(payload.get("run_id") or config.run_id))
+                map_preset, map_variant = parse_map_request(payload)
+                result = run_map_rerun(
+                    config=config,
+                    source_run_id=source_run_id,
+                    map_preset=map_preset,
+                    map_variant=map_variant,
                 )
                 self.write_json(result)
             except Exception as exc:  # pragma: no cover - exercised by browser/demo use.
