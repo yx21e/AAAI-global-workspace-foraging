@@ -173,6 +173,8 @@ class AblationViewerTest(unittest.TestCase):
             self.assertIn("GWT Ablation Dashboard", html)
             self.assertIn("levelSelect", html)
             self.assertIn("conditionSelect", html)
+            self.assertIn("Fresh Ignition Winners", html)
+            self.assertIn("Maintained Broadcast Sources", html)
             self.assertIn("Agent Lesion", html)
             self.assertIn("Workspace Gating", html)
             self.assertIn("Disable language", html)

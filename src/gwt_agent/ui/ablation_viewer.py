@@ -154,6 +154,9 @@ def run_metric(
         "map_label": "-",
         "agent_position": None,
         "winner_counts": {},
+        "active_broadcast_counts": {},
+        "maintained_broadcast_counts": {},
+        "no_ignition_count": 0,
         "route_counts": {},
         "motor_target_sources": {},
         "action_failures": 0,
@@ -216,14 +219,29 @@ def summary_metrics(summary: dict) -> dict:
 
 
 def trace_metrics(envelopes: List[dict]) -> dict:
-    winners = Counter()
+    ignition_winners = Counter()
+    active_broadcasts = Counter()
+    maintained_broadcasts = Counter()
     routes = Counter()
     motor_sources = Counter()
     positions = []
     action_failures = 0
+    no_ignition_count = 0
     for envelope in envelopes:
         broadcast = envelope.get("workspace_broadcast") or {}
-        winners[broadcast.get("winner_module") or "none"] += 1
+        broadcast_source = broadcast.get("winner_module") or "none"
+        active_broadcasts[broadcast_source] += 1
+        workspace_metadata = (broadcast.get("metadata") or {}).get("workspace") or {}
+        if workspace_metadata.get("ignited"):
+            ignition_winners[broadcast_source] += 1
+        elif workspace_metadata.get("maintained"):
+            maintained_broadcasts[broadcast_source] += 1
+        elif workspace_metadata:
+            no_ignition_count += 1
+        else:
+            # Backward compatibility for older traces that did not persist
+            # explicit ignition metadata.
+            ignition_winners[broadcast_source] += 1
         action = envelope.get("env_action") or {}
         routes[(action.get("metadata") or {}).get("action_route") or "unknown"] += 1
         symbolic = ((envelope.get("next_env_state") or {}).get("symbolic_state") or {})
@@ -240,7 +258,10 @@ def trace_metrics(envelopes: List[dict]) -> dict:
             source = first_observation_value(observations, "target_source") or "none"
             motor_sources[source] += 1
     return {
-        "winner_counts": dict(winners),
+        "winner_counts": dict(ignition_winners),
+        "active_broadcast_counts": dict(active_broadcasts),
+        "maintained_broadcast_counts": dict(maintained_broadcasts),
+        "no_ignition_count": no_ignition_count,
         "route_counts": dict(routes),
         "motor_target_sources": dict(motor_sources),
         "action_failures": action_failures,
@@ -256,12 +277,18 @@ def aggregate_metrics(runs: List[dict]) -> dict:
     cycles = [run.get("cycle_count") for run in valid_runs if is_number(run.get("cycle_count"))]
     env_steps = [run.get("env_step_count") for run in valid_runs if is_number(run.get("env_step_count"))]
     winners = Counter()
+    active_broadcasts = Counter()
+    maintained_broadcasts = Counter()
     routes = Counter()
     motor_sources = Counter()
+    no_ignition_count = 0
     for run in valid_runs:
         winners.update(run.get("winner_counts") or {})
+        active_broadcasts.update(run.get("active_broadcast_counts") or {})
+        maintained_broadcasts.update(run.get("maintained_broadcast_counts") or {})
         routes.update(run.get("route_counts") or {})
         motor_sources.update(run.get("motor_target_sources") or {})
+        no_ignition_count += int(run.get("no_ignition_count") or 0)
     return {
         "run_count": run_count,
         "valid_run_count": len(valid_runs),
@@ -276,6 +303,11 @@ def aggregate_metrics(runs: List[dict]) -> dict:
         else None,
         "action_failures": sum(int(run.get("action_failures") or 0) for run in valid_runs),
         "winner_counts": dict(winners),
+        "fresh_ignition_count": sum(winners.values()),
+        "active_broadcast_counts": dict(active_broadcasts),
+        "maintained_broadcast_counts": dict(maintained_broadcasts),
+        "maintained_broadcast_count": sum(maintained_broadcasts.values()),
+        "no_ignition_count": no_ignition_count,
         "route_counts": dict(routes),
         "motor_target_sources": dict(motor_sources),
     }
@@ -626,13 +658,17 @@ HTML_TEMPLATE = r"""<!doctype html>
       </div>
       <div class="two-col">
         <div class="panel">
-          <h2>Workspace Winners</h2>
+          <h2>Fresh Ignition Winners</h2>
           <div class="bar-list" id="winnerBars"></div>
         </div>
         <div class="panel">
-          <h2>Action Routes</h2>
-          <div class="bar-list" id="routeBars"></div>
+          <h2>Maintained Broadcast Sources</h2>
+          <div class="bar-list" id="maintainedBars"></div>
         </div>
+      </div>
+      <div class="panel">
+        <h2>Action Routes</h2>
+        <div class="bar-list" id="routeBars"></div>
       </div>
       <div class="panel">
         <h2>Level Overview</h2>
@@ -726,6 +762,9 @@ HTML_TEMPLATE = r"""<!doctype html>
         metric('avg env steps', fmt(metrics.avg_env_steps, 1)),
         metric('action failures', metrics.action_failures || 0),
         metric('avg longest same pos', fmt(metrics.avg_longest_same_position, 1)),
+        metric('fresh ignitions', metrics.fresh_ignition_count || 0),
+        metric('maintained cycles', metrics.maintained_broadcast_count || 0),
+        metric('no ignition cycles', metrics.no_ignition_count || 0),
         metric('valid runs', metrics.valid_run_count || 0),
         metric('total runs', metrics.run_count || 0),
       ].join('');
@@ -822,6 +861,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       document.getElementById('expectedText').textContent = condition.expected_effect || '-';
       renderMetrics(condition);
       renderBars('winnerBars', (condition.metrics || {}).winner_counts);
+      renderBars('maintainedBars', (condition.metrics || {}).maintained_broadcast_counts);
       renderBars('routeBars', (condition.metrics || {}).route_counts);
       renderLevelTable(level);
       renderRunTable(condition);

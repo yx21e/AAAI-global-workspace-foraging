@@ -363,8 +363,8 @@ PYTHONPATH=src python3 scripts/build_ablation_viewer.py \
 ```
 
 The dashboard gives you a level dropdown and a condition dropdown, then shows
-success rate, cycles, route counts, winner counts, and links to the underlying
-run artifacts for each condition.
+success rate, cycles, action routes, fresh ignition winners, maintained
+broadcast sources, and links to the underlying run artifacts for each condition.
 
 Relative `run_dir` values are resolved from the manifest file location, so the
 template points `../runs/qiyuan_integrated` back to the repo's run folder.
@@ -444,7 +444,7 @@ done: true
 resources_collected: 1
 cycle_count: 51
 env_step_count: 25
-workspace winners: perception=25, motor=15, language=11
+fresh ignition winners: perception=25, motor=15, language=11
 action routes: workspace_broadcast=15, non_workspace_motor_threshold=10, no_action_threshold_not_met=26
 non-workspace motor moves: 10
 non-perception broadcast target leaks: 0
