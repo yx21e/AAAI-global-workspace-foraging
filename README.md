@@ -350,6 +350,25 @@ This should be described as **reportable decision basis and module
 self-report**, not full internal reasoning. The deterministic scoring terms
 remain external to the modules: modules do not set their own importance scores.
 
+## Ablation Dashboard
+
+Use `configs/ablation_manifest_template.json` as the starting point for an
+ablation suite. Group conditions by level, fill in the relevant `run_ids`, then
+build a static comparison dashboard:
+
+```bash
+PYTHONPATH=src python3 scripts/build_ablation_viewer.py \
+  --manifest configs/ablation_manifest_template.json \
+  --open
+```
+
+The dashboard gives you a level dropdown and a condition dropdown, then shows
+success rate, cycles, route counts, winner counts, and links to the underlying
+run artifacts for each condition.
+
+Relative `run_dir` values are resolved from the manifest file location, so the
+template points `../runs/qiyuan_integrated` back to the repo's run folder.
+
 ## Replay Historical Records
 
 Exact trace replay, using Qiyuan `load_state(state, grid)`:

@@ -1,0 +1,91 @@
+{
+  "title": "GWT Ablation Dashboard",
+  "description": "Fill in run ids from ablation experiments. Each level groups related manipulations.",
+  "run_dir": "../runs/qiyuan_integrated",
+  "levels": [
+    {
+      "id": "agent-lesion",
+      "label": "Agent Lesion",
+      "description": "Disable one or more modules and compare task success.",
+      "conditions": [
+        {
+          "id": "baseline",
+          "label": "Full system",
+          "manipulation": "No modules are disabled.",
+          "expected_effect": "Reference performance.",
+          "run_ids": []
+        }
+      ]
+    },
+    {
+      "id": "workspace-gating",
+      "label": "Workspace Gating",
+      "description": "Change ignition, decay, or maintenance behavior.",
+      "conditions": [
+        {
+          "id": "strict-workspace",
+          "label": "Strict workspace-only",
+          "manipulation": "Disable non-workspace motor execution.",
+          "expected_effect": "Fewer automatic motor moves; more waiting when no broadcast is actionable.",
+          "run_ids": []
+        }
+      ]
+    },
+    {
+      "id": "attention-importance",
+      "label": "Attention / Importance",
+      "description": "Sweep salience, relevance, and module score multipliers.",
+      "conditions": [
+        {
+          "id": "salience-only",
+          "label": "Salience only",
+          "manipulation": "Set salience_weight=1.0 and relevance_weight=0.0.",
+          "expected_effect": "Winner selection should follow input change more than task relevance.",
+          "run_ids": []
+        },
+        {
+          "id": "relevance-only",
+          "label": "Relevance only",
+          "manipulation": "Set salience_weight=0.0 and relevance_weight=1.0.",
+          "expected_effect": "Winner selection should follow task/broadcast semantics more than local change.",
+          "run_ids": []
+        }
+      ]
+    },
+    {
+      "id": "broadcast-bridge",
+      "label": "Broadcast / Bridge",
+      "description": "Test whether language-to-motor top-down instructions really travel through workspace.",
+      "conditions": [
+        {
+          "id": "bridge-on",
+          "label": "Language bridge on",
+          "manipulation": "Allow language instruction_* fields to survive workspace broadcast.",
+          "expected_effect": "Prompted navigation should influence later motor planning.",
+          "run_ids": []
+        },
+        {
+          "id": "bridge-off",
+          "label": "Language bridge off",
+          "manipulation": "Strip instruction_* fields before they reach motor.",
+          "expected_effect": "Prompted navigation should not influence movement.",
+          "run_ids": []
+        }
+      ]
+    },
+    {
+      "id": "environment-perturbation",
+      "label": "Environment Perturbation",
+      "description": "Vary map layout, obstacles, and initial placement.",
+      "conditions": [
+        {
+          "id": "map-sweep",
+          "label": "Five-map sweep",
+          "manipulation": "Compare the five difficulty-2 layouts.",
+          "expected_effect": "Measure robustness to layout variation.",
+          "run_ids": []
+        }
+      ]
+    }
+  ]
+}
