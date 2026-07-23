@@ -73,6 +73,13 @@ class WorkspaceRunnerTest(unittest.TestCase):
         self.assertNotIn("perception", proposal_names)
         self.assertEqual(module_statuses["perception"], "disabled")
 
+    def test_language_alias_disables_language_report_module(self):
+        config = ExperimentConfig(disabled_modules=["language"])
+
+        self.assertTrue(config.is_disabled("language"))
+        self.assertTrue(config.is_disabled("language_report"))
+        self.assertFalse(config.is_disabled("perception"))
+
     def test_workspace_does_not_force_alternating_winners(self):
         workspace = CentralWorkspace(ignition_threshold=0.1)
         winners = []
@@ -240,6 +247,41 @@ class WorkspaceRunnerTest(unittest.TestCase):
 
         self.assertIsNotNone(winner)
         self.assertEqual(winner.module_name, "language")
+
+    def test_language_instruction_bridge_can_be_disabled(self):
+        workspace = CentralWorkspace(
+            ignition_threshold=0.1,
+            language_instruction_bridge=False,
+        )
+        proposal = ModuleProposal(
+            module_name="language",
+            content={
+                "summary": "User pause prompt: move up for 5 steps.",
+                "instruction_id": "instr-test",
+                "instruction_type": "temporary_direction",
+                "instruction_direction": "UP",
+                "instruction_horizon_steps": 5,
+                "instruction_priority": "top",
+                "instruction_source": "experimenter_language_prompt",
+                "observations": [
+                    "instruction_direction=UP",
+                    "instruction_horizon_steps=5",
+                    "instruction_source=experimenter_language_prompt",
+                ],
+            },
+            importance_score=0.9,
+            uptake_score=0.9,
+        )
+
+        broadcast = workspace.broadcast(0, proposal)
+
+        self.assertEqual(broadcast.winner_module, "language")
+        self.assertNotIn("instruction_direction", broadcast.content)
+        self.assertNotIn("instruction_horizon_steps", broadcast.content)
+        self.assertEqual(broadcast.content["observations"], [])
+        self.assertFalse(
+            broadcast.metadata["language_instruction_bridge"]["enabled"],
+        )
 
     def test_action_stream_export(self):
         with tempfile.TemporaryDirectory() as temp_dir:

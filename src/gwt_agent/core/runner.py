@@ -37,6 +37,7 @@ class WorkspaceRunner:
             ignition_threshold=self.experiment.ignition_threshold,
             decay_rate=self.experiment.workspace_decay,
             maintenance_steps=self.experiment.workspace_maintenance_steps,
+            language_instruction_bridge=self.experiment.language_instruction_bridge,
         )
         self.logger = logger or TraceLogger()
         self.action_resolver = ActionResolver(self.experiment)

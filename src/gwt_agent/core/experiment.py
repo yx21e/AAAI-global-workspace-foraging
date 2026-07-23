@@ -23,10 +23,19 @@ class ExperimentConfig:
     workspace_adjustment_policy: str = "none"
     motor_execution_threshold: float = 0.02
     allow_non_workspace_motor_action: bool = False
+    language_instruction_bridge: bool = True
     metadata: JsonDict = field(default_factory=dict)
 
     def is_disabled(self, module_name: str) -> bool:
-        return module_name in set(self.disabled_modules)
+        disabled = {str(name).lower() for name in self.disabled_modules}
+        lower_name = str(module_name).lower()
+        if lower_name in disabled:
+            return True
+        if any(lower_name.startswith(name) for name in disabled):
+            return True
+        if "language" in disabled and ("language" in lower_name or "report" in lower_name):
+            return True
+        return False
 
     def apply_to_proposal(self, proposal: ModuleProposal) -> ModuleProposal:
         factor = self.score_modifiers.get(proposal.module_name, 1.0)

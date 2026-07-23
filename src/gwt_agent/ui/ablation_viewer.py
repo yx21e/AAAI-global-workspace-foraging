@@ -159,6 +159,7 @@ def run_metric(
         "no_ignition_count": 0,
         "route_counts": {},
         "motor_target_sources": {},
+        "motor_planning_sources": {},
         "action_failures": 0,
         "longest_same_position": 0,
         "max_period2_repeat": 0,
@@ -210,10 +211,13 @@ def summary_metrics(summary: dict) -> dict:
             "ignition_threshold": summary.get("ignition_threshold"),
             "salience_weight": summary.get("salience_weight"),
             "relevance_weight": summary.get("relevance_weight"),
+            "workspace_decay": summary.get("workspace_decay"),
+            "workspace_maintenance_steps": summary.get("workspace_maintenance_steps"),
             "workspace_recurrence_bonus": summary.get("workspace_recurrence_bonus"),
             "workspace_adjustment_policy": summary.get("workspace_adjustment_policy"),
             "allow_non_workspace_motor_action": summary.get("allow_non_workspace_motor_action"),
             "motor_execution_threshold": summary.get("motor_execution_threshold"),
+            "language_instruction_bridge": summary.get("language_instruction_bridge"),
         },
     }
 
@@ -224,6 +228,7 @@ def trace_metrics(envelopes: List[dict]) -> dict:
     maintained_broadcasts = Counter()
     routes = Counter()
     motor_sources = Counter()
+    motor_planning_sources = Counter()
     positions = []
     action_failures = 0
     no_ignition_count = 0
@@ -257,6 +262,8 @@ def trace_metrics(envelopes: List[dict]) -> dict:
             observations = (proposal.get("content") or {}).get("observations") or []
             source = first_observation_value(observations, "target_source") or "none"
             motor_sources[source] += 1
+            planning_source = first_observation_value(observations, "planning_source") or "none"
+            motor_planning_sources[planning_source] += 1
     return {
         "winner_counts": dict(ignition_winners),
         "active_broadcast_counts": dict(active_broadcasts),
@@ -264,6 +271,7 @@ def trace_metrics(envelopes: List[dict]) -> dict:
         "no_ignition_count": no_ignition_count,
         "route_counts": dict(routes),
         "motor_target_sources": dict(motor_sources),
+        "motor_planning_sources": dict(motor_planning_sources),
         "action_failures": action_failures,
         "longest_same_position": longest_same_position(positions),
         "max_period2_repeat": max_period2_repeat(positions),
@@ -281,6 +289,7 @@ def aggregate_metrics(runs: List[dict]) -> dict:
     maintained_broadcasts = Counter()
     routes = Counter()
     motor_sources = Counter()
+    motor_planning_sources = Counter()
     no_ignition_count = 0
     for run in valid_runs:
         winners.update(run.get("winner_counts") or {})
@@ -288,12 +297,14 @@ def aggregate_metrics(runs: List[dict]) -> dict:
         maintained_broadcasts.update(run.get("maintained_broadcast_counts") or {})
         routes.update(run.get("route_counts") or {})
         motor_sources.update(run.get("motor_target_sources") or {})
+        motor_planning_sources.update(run.get("motor_planning_sources") or {})
         no_ignition_count += int(run.get("no_ignition_count") or 0)
     return {
         "run_count": run_count,
         "valid_run_count": len(valid_runs),
         "success_count": success_count,
         "success_rate": success_count / len(valid_runs) if valid_runs else 0.0,
+        "sample_warning": sample_warning(run_count=len(valid_runs)),
         "avg_cycles": mean(cycles) if cycles else None,
         "avg_env_steps": mean(env_steps) if env_steps else None,
         "avg_longest_same_position": mean(
@@ -310,6 +321,7 @@ def aggregate_metrics(runs: List[dict]) -> dict:
         "no_ignition_count": no_ignition_count,
         "route_counts": dict(routes),
         "motor_target_sources": dict(motor_sources),
+        "motor_planning_sources": dict(motor_planning_sources),
     }
 
 
@@ -353,6 +365,16 @@ def resolve_path(value: str, base_dir: Path) -> Path:
 
 def is_number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def sample_warning(*, run_count: int) -> str:
+    if run_count == 0:
+        return "No valid runs in this condition."
+    if run_count == 1:
+        return "Only one run: success rate can only be 0% or 100%."
+    if run_count < 5:
+        return "Low sample count: success-rate resolution is coarse."
+    return ""
 
 
 def slug(value: Any) -> str:
@@ -670,6 +692,16 @@ HTML_TEMPLATE = r"""<!doctype html>
         <h2>Action Routes</h2>
         <div class="bar-list" id="routeBars"></div>
       </div>
+      <div class="two-col">
+        <div class="panel">
+          <h2>Motor Target Sources</h2>
+          <div class="bar-list" id="targetSourceBars"></div>
+        </div>
+        <div class="panel">
+          <h2>Motor Planning Sources</h2>
+          <div class="bar-list" id="planningSourceBars"></div>
+        </div>
+      </div>
       <div class="panel">
         <h2>Level Overview</h2>
         <div class="table-wrap">
@@ -758,6 +790,7 @@ HTML_TEMPLATE = r"""<!doctype html>
       document.getElementById('metricsGrid').innerHTML = [
         metric('success rate', percent(metrics.success_rate), Number(metrics.success_rate || 0) >= 0.8 ? 'ok' : 'bad'),
         metric('successful runs', `${metrics.success_count || 0} / ${metrics.valid_run_count || 0}`),
+        metric('sample note', metrics.sample_warning || '-'),
         metric('avg cycles', fmt(metrics.avg_cycles, 1)),
         metric('avg env steps', fmt(metrics.avg_env_steps, 1)),
         metric('action failures', metrics.action_failures || 0),
@@ -841,10 +874,13 @@ HTML_TEMPLATE = r"""<!doctype html>
         ['ignition threshold', config.ignition_threshold],
         ['salience weight', config.salience_weight],
         ['relevance weight', config.relevance_weight],
+        ['workspace decay', config.workspace_decay],
+        ['workspace maintenance steps', config.workspace_maintenance_steps],
         ['workspace recurrence bonus', config.workspace_recurrence_bonus],
         ['workspace adjustment policy', config.workspace_adjustment_policy],
         ['allow non-workspace motor', config.allow_non_workspace_motor_action],
         ['motor execution threshold', config.motor_execution_threshold],
+        ['language instruction bridge', config.language_instruction_bridge],
       ].map(([key, value]) => `<div class="k">${html(key)}</div><div class="v">${html(value)}</div>`).join('');
     }
 
@@ -863,6 +899,8 @@ HTML_TEMPLATE = r"""<!doctype html>
       renderBars('winnerBars', (condition.metrics || {}).winner_counts);
       renderBars('maintainedBars', (condition.metrics || {}).maintained_broadcast_counts);
       renderBars('routeBars', (condition.metrics || {}).route_counts);
+      renderBars('targetSourceBars', (condition.metrics || {}).motor_target_sources);
+      renderBars('planningSourceBars', (condition.metrics || {}).motor_planning_sources);
       renderLevelTable(level);
       renderRunTable(condition);
       renderConfig(condition);

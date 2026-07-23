@@ -105,6 +105,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--salience-weight", type=float, default=0.55)
     parser.add_argument("--relevance-weight", type=float, default=0.45)
     parser.add_argument(
+        "--disable-module",
+        action="append",
+        default=[],
+        metavar="MODULE",
+        help="Disable a module for ablation. Repeatable; accepts perception, motor, or language.",
+    )
+    parser.add_argument(
         "--score-modifier",
         action="append",
         default=[],
@@ -117,6 +124,8 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Optional bonus for the module that won the previous workspace cycle.",
     )
+    parser.add_argument("--workspace-decay", type=float, default=0.85)
+    parser.add_argument("--workspace-maintenance-steps", type=int, default=4)
     parser.add_argument(
         "--workspace-adjustment-policy",
         choices=["none", "anti_echo"],
@@ -157,6 +166,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Allow the optional motor threshold route even when motor did not win workspace.",
     )
+    parser.add_argument("--motor-execution-threshold", type=float, default=0.02)
+    parser.add_argument(
+        "--disable-language-bridge",
+        action="store_true",
+        help="Strip language instruction_* fields from workspace broadcast before motor can hear them.",
+    )
+    parser.add_argument(
+        "--no-perception-screenshots",
+        action="store_true",
+        help="Skip rendering perception input screenshots; useful for fast mock ablation suites.",
+    )
     return parser.parse_args()
 
 
@@ -170,6 +190,7 @@ def main() -> None:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    disabled_modules = parse_disabled_modules(args.disable_module)
     run_id = args.run_id or f"qiyuan-d{args.difficulty}-seed{args.seed}"
     trace_path = out_dir / f"{run_id}_trace.jsonl"
     envelope_path = out_dir / f"{run_id}_envelopes.jsonl"
@@ -195,13 +216,18 @@ def main() -> None:
         env_adapter=adapter,
         modules=modules,
         experiment=ExperimentConfig(
+            disabled_modules=disabled_modules,
             allow_non_workspace_motor_action=args.allow_non_workspace_motor,
             ignition_threshold=args.ignition_threshold,
             salience_weight=args.salience_weight,
             relevance_weight=args.relevance_weight,
             score_modifiers=parse_score_modifiers(args.score_modifier),
             workspace_recurrence_bonus=args.workspace_recurrence_bonus,
+            workspace_decay=args.workspace_decay,
+            workspace_maintenance_steps=args.workspace_maintenance_steps,
             workspace_adjustment_policy=args.workspace_adjustment_policy,
+            motor_execution_threshold=args.motor_execution_threshold,
+            language_instruction_bridge=not args.disable_language_bridge,
         ),
         logger=TraceLogger(str(trace_path)),
         run_id=run_id,
@@ -218,7 +244,8 @@ def main() -> None:
     if not args.no_render:
         frame_dir.mkdir(parents=True, exist_ok=True)
         env.render(str(frame_dir / "frame_0000_initial.png"))
-    attach_perception_screenshot(adapter, initial_state, perception_dir)
+    if not args.no_perception_screenshots:
+        attach_perception_screenshot(adapter, initial_state, perception_dir)
 
     traces = []
     for cycle_index in range(args.max_cycles):
@@ -231,7 +258,8 @@ def main() -> None:
                 query=args.report_query,
                 language_pauses=language_pauses,
             )
-            attach_perception_screenshot(adapter, current_state, perception_dir)
+            if not args.no_perception_screenshots:
+                attach_perception_screenshot(adapter, current_state, perception_dir)
         trace = runner.step()
         traces.append(trace)
         if not args.no_render:
@@ -274,10 +302,14 @@ def main() -> None:
         "salience_weight": args.salience_weight,
         "relevance_weight": args.relevance_weight,
         "workspace_recurrence_bonus": args.workspace_recurrence_bonus,
+        "workspace_decay": args.workspace_decay,
+        "workspace_maintenance_steps": args.workspace_maintenance_steps,
         "workspace_adjustment_policy": args.workspace_adjustment_policy,
         "score_modifiers": parse_score_modifiers(args.score_modifier),
+        "disabled_modules": disabled_modules,
         "allow_non_workspace_motor_action": args.allow_non_workspace_motor,
-        "motor_execution_threshold": 0.02,
+        "motor_execution_threshold": args.motor_execution_threshold,
+        "language_instruction_bridge": not args.disable_language_bridge,
         "max_cycles": args.max_cycles,
         "report_query_every": args.report_query_every,
         "report_query": args.report_query,
@@ -298,7 +330,7 @@ def main() -> None:
         },
         "out_dir": str(out_dir),
         "frame_dir": None if args.no_render else str(frame_dir),
-        "perception_screenshot_dir": str(perception_dir),
+        "perception_screenshot_dir": None if args.no_perception_screenshots else str(perception_dir),
         "project_root": str(Path(__file__).resolve().parents[1]),
         "viewer_path": None,
     }
@@ -348,6 +380,21 @@ def parse_score_modifiers(values):
         module, factor_text = value.split("=", 1)
         modifiers[module.strip()] = float(factor_text)
     return modifiers
+
+
+def parse_disabled_modules(values):
+    modules = []
+    for value in values:
+        for item in str(value).split(","):
+            name = item.strip().lower()
+            if not name:
+                continue
+            if name not in {"perception", "motor", "language", "language_report"}:
+                raise ValueError(
+                    f"Invalid --disable-module {name!r}; expected perception, motor, or language."
+                )
+            modules.append(name)
+    return modules
 
 
 def parse_language_pauses(values):

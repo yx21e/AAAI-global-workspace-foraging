@@ -9,6 +9,15 @@ from gwt_agent.core.types import ModuleProposal, WorkspaceBroadcast, WorkspaceSt
 
 TARGET_KEYS = {"resource_position", "base_position", "target_position"}
 TARGET_TEXT_KEYS = {"resource", "base", "target"}
+INSTRUCTION_KEYS = {
+    "instruction_id",
+    "instruction_type",
+    "instruction_target_position",
+    "instruction_direction",
+    "instruction_horizon_steps",
+    "instruction_priority",
+    "instruction_source",
+}
 TRANSIENT_ACTION_KEYS = {"planned_action", "action", "action_hint", "command", "direction"}
 TRANSIENT_ACTIONS = r"(?:UP|DOWN|LEFT|RIGHT|PICKUP|NOOP|WAIT|STAY|NONE)"
 
@@ -22,6 +31,7 @@ class CentralWorkspace:
         ignition_threshold: float = 0.25,
         decay_rate: float = 0.85,
         maintenance_steps: int = 4,
+        language_instruction_bridge: bool = True,
     ) -> None:
         self.state = WorkspaceState(
             capacity=capacity,
@@ -29,6 +39,7 @@ class CentralWorkspace:
             maintenance_steps=maintenance_steps,
         )
         self.ignition_threshold = ignition_threshold
+        self.language_instruction_bridge = language_instruction_bridge
 
     def select_winner(self, proposals: Iterable[ModuleProposal]) -> Optional[ModuleProposal]:
         proposal_list: List[ModuleProposal] = list(proposals)
@@ -59,7 +70,10 @@ class CentralWorkspace:
             return self._maintain_or_idle(timestamp)
 
         score = winner.uptake_score if winner.uptake_score is not None else winner.importance_score
-        metadata = global_metadata_for_winner(winner)
+        metadata = global_metadata_for_winner(
+            winner,
+            language_instruction_bridge=self.language_instruction_bridge,
+        )
         metadata["workspace"] = {
             "ignited": True,
             "ignition_threshold": self.ignition_threshold,
@@ -69,7 +83,10 @@ class CentralWorkspace:
         broadcast = WorkspaceBroadcast(
             timestamp=timestamp,
             winner_module=winner.module_name,
-            content=global_content_for_winner(winner),
+            content=global_content_for_winner(
+                winner,
+                language_instruction_bridge=self.language_instruction_bridge,
+            ),
             importance_score=score,
             confidence=winner.confidence,
             action_hint=winner.action_hint,
@@ -117,7 +134,11 @@ class CentralWorkspace:
         )
 
 
-def global_content_for_winner(winner: ModuleProposal):
+def global_content_for_winner(
+    winner: ModuleProposal,
+    *,
+    language_instruction_bridge: bool = True,
+):
     """Return the content that is actually globally broadcast.
 
     Raw module proposals remain in the trace for debugging. The global broadcast
@@ -126,12 +147,20 @@ def global_content_for_winner(winner: ModuleProposal):
     own winning broadcasts.
     """
 
+    content = winner.content
     if str(winner.module_name).lower().startswith("perception"):
-        return winner.content
-    return strip_target_coordinates(winner.content)
+        return content
+    content = strip_target_coordinates(content)
+    if not language_instruction_bridge:
+        content = strip_instruction_fields(content)
+    return content
 
 
-def global_metadata_for_winner(winner: ModuleProposal) -> dict:
+def global_metadata_for_winner(
+    winner: ModuleProposal,
+    *,
+    language_instruction_bridge: bool = True,
+) -> dict:
     metadata = deepcopy(winner.metadata)
     if str(winner.module_name).lower().startswith("perception"):
         metadata["winner_rationale"] = winner.rationale
@@ -143,6 +172,11 @@ def global_metadata_for_winner(winner: ModuleProposal) -> dict:
         "applied": True,
         "reason": "Only perception broadcasts resource/base/target coordinates.",
     }
+    if not language_instruction_bridge:
+        metadata["language_instruction_bridge"] = {
+            "enabled": False,
+            "reason": "instruction_* fields are stripped before reaching motor.",
+        }
     return metadata
 
 
@@ -200,6 +234,31 @@ def strip_target_coordinates(value):
     return value
 
 
+def strip_instruction_fields(value):
+    if isinstance(value, dict):
+        sanitized = {}
+        for key, item in value.items():
+            if key in INSTRUCTION_KEYS:
+                continue
+            sanitized_item = strip_instruction_fields(item)
+            if sanitized_item is None and key == "observations":
+                sanitized_item = []
+            sanitized[key] = sanitized_item
+        return sanitized
+    if isinstance(value, list):
+        sanitized_items = []
+        for item in value:
+            sanitized_item = strip_instruction_fields(item)
+            if sanitized_item is not None:
+                sanitized_items.append(sanitized_item)
+        return sanitized_items
+    if isinstance(value, str):
+        if should_drop_instruction_observation_string(value):
+            return None
+        return value
+    return value
+
+
 def strip_transient_action_cues(value):
     if isinstance(value, dict):
         sanitized = {}
@@ -237,6 +296,13 @@ def should_drop_action_observation_string(value: str) -> bool:
         return False
     key = value.split("=", 1)[0].strip()
     return key in TRANSIENT_ACTION_KEYS
+
+
+def should_drop_instruction_observation_string(value: str) -> bool:
+    if "=" not in value:
+        return False
+    key = value.split("=", 1)[0].strip()
+    return key in INSTRUCTION_KEYS
 
 
 def redact_target_text(text: str) -> str:

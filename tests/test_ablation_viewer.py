@@ -175,14 +175,23 @@ class AblationViewerTest(unittest.TestCase):
             self.assertIn("conditionSelect", html)
             self.assertIn("Fresh Ignition Winners", html)
             self.assertIn("Maintained Broadcast Sources", html)
+            self.assertIn("Motor Planning Sources", html)
             self.assertIn("Agent Lesion", html)
             self.assertIn("Workspace Gating", html)
             self.assertIn("Disable language", html)
             self.assertEqual(payload["total_conditions"], 3)
             self.assertEqual(payload["total_runs"], 3)
             self.assertEqual(payload["levels"][0]["conditions"][0]["metrics"]["success_rate"], 1.0)
+            self.assertIn(
+                "Only one run",
+                payload["levels"][0]["conditions"][0]["metrics"]["sample_warning"],
+            )
             self.assertEqual(payload["levels"][0]["conditions"][1]["metrics"]["success_count"], 0)
             self.assertEqual(payload["levels"][1]["conditions"][0]["runs"][0]["winner_counts"]["language"], 1)
+            self.assertEqual(
+                payload["levels"][1]["conditions"][0]["runs"][0]["motor_planning_sources"]["broadcast_global_map"],
+                1,
+            )
 
 
 def _write_run(run_dir: Path, run_id: str, summary: dict, envelopes: list[dict]) -> None:
@@ -249,7 +258,10 @@ def _envelope(*, cycle_t: int, winner: str, route: str, target_source: str) -> d
                     "action_hint": "RIGHT",
                     "content": {
                         "summary": "motor summary",
-                        "observations": [f"target_source={target_source}"],
+                        "observations": [
+                            f"target_source={target_source}",
+                            "planning_source=broadcast_global_map",
+                        ],
                     },
                     "metadata": {
                         "importance_function": {

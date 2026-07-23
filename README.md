@@ -352,8 +352,31 @@ remain external to the modules: modules do not set their own importance scores.
 
 ## Ablation Dashboard
 
-Use `configs/ablation_manifest_template.json` as the starting point for an
-ablation suite. Group conditions by level, fill in the relevant `run_ids`, then
+For the standard controlled suite, run each condition over the same five
+difficulty-2 map variants and build the dashboard in one command:
+
+```bash
+PYTHONPATH=src:. python3 scripts/run_ablation_suite.py \
+  --suite-id ablation-standard \
+  --variants 0,1,2,3,4 \
+  --max-cycles 500 \
+  --agent-backend mock-llm
+```
+
+This writes:
+
+```text
+runs/qiyuan_integrated/ablation-standard_manifest.json
+runs/qiyuan_integrated/ablation-standard_manifest_viewer.html
+```
+
+The suite keeps map, task, backend, and max cycles fixed within each comparison.
+For bridge-on/off, both conditions use the same language pause prompt and the
+same `score_modifier language=1.6`; the only manipulated variable is whether
+`instruction_*` fields survive workspace broadcast.
+
+For a hand-built suite, use `configs/ablation_manifest_template.json` as the
+starting point. Group conditions by level, fill in the relevant `run_ids`, then
 build a static comparison dashboard:
 
 ```bash
@@ -364,7 +387,9 @@ PYTHONPATH=src python3 scripts/build_ablation_viewer.py \
 
 The dashboard gives you a level dropdown and a condition dropdown, then shows
 success rate, cycles, action routes, fresh ignition winners, maintained
-broadcast sources, and links to the underlying run artifacts for each condition.
+broadcast sources, motor target/planning sources, and links to the underlying
+run artifacts for each condition. If a condition has only one valid run, the
+dashboard warns that its success rate can only be 0% or 100%.
 
 Relative `run_dir` values are resolved from the manifest file location, so the
 template points `../runs/qiyuan_integrated` back to the repo's run folder.

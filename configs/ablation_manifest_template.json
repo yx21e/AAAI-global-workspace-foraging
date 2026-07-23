@@ -1,18 +1,39 @@
 {
   "title": "GWT Ablation Dashboard",
-  "description": "Fill in run ids from ablation experiments. Each level groups related manipulations.",
+  "description": "Fill in run ids from ablation experiments. Each condition should contain multiple controlled runs, preferably the same five difficulty-2 map variants.",
   "run_dir": "../runs/qiyuan_integrated",
   "levels": [
     {
       "id": "agent-lesion",
       "label": "Agent Lesion",
-      "description": "Disable one or more modules and compare task success.",
+      "description": "Disable one module at a time while keeping map, task, scoring, and backend fixed.",
       "conditions": [
         {
           "id": "baseline",
           "label": "Full system",
           "manipulation": "No modules are disabled.",
           "expected_effect": "Reference performance.",
+          "run_ids": []
+        },
+        {
+          "id": "disable-perception",
+          "label": "Disable perception",
+          "manipulation": "Set disabled_modules=perception.",
+          "expected_effect": "Motor loses global target/map broadcasts; success should drop.",
+          "run_ids": []
+        },
+        {
+          "id": "disable-motor",
+          "label": "Disable motor",
+          "manipulation": "Set disabled_modules=motor.",
+          "expected_effect": "Movement should disappear; success should drop.",
+          "run_ids": []
+        },
+        {
+          "id": "disable-language",
+          "label": "Disable language",
+          "manipulation": "Set disabled_modules=language.",
+          "expected_effect": "Autonomous foraging should remain close to baseline without prompt intervention.",
           "run_ids": []
         }
       ]
@@ -27,6 +48,13 @@
           "label": "Strict workspace-only",
           "manipulation": "Disable non-workspace motor execution.",
           "expected_effect": "Fewer automatic motor moves; more waiting when no broadcast is actionable.",
+          "run_ids": []
+        },
+        {
+          "id": "non-workspace-motor-on",
+          "label": "Non-workspace motor on",
+          "manipulation": "Enable allow_non_workspace_motor_action.",
+          "expected_effect": "Reference throughput for the automatic/local motor route.",
           "run_ids": []
         }
       ]
